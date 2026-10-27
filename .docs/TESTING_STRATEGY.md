@@ -32,6 +32,8 @@ php artisan test --parallel
 npm run build             # frontend compiles (JS only — CI must fail on any .ts file)
 ```
 
+> **Database (2026-10-27):** the automated suite runs on MySQL database **`cartoon_studio_testing`** (configured in `phpunit.xml`; `RefreshDatabase` re-migrates per run). SQLite `:memory:` is NOT used anymore — it was intermittently losing the wrapping transaction on this Windows machine, silently committing fixtures. Create the testing DB once per machine: `CREATE DATABASE cartoon_studio_testing CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+
 ## Manual tests
 
 1. **Manual integration test (real credentials)** — documented step-by-step in the Phase 3/4/5 completion notes and consolidated in [reference/ACCEPTANCE_CRITERIA.md](reference/ACCEPTANCE_CRITERIA.md): configure a real key, run one story generation, one image generation, one TTS call; verify ledger rows, costs, artifacts, and error paths (invalid key → actionable failure, no fake assets).

@@ -1,6 +1,6 @@
-# Database Design (PROPOSED — validate during Phase 1)
+# Database Design (VALIDATED against Laravel 13 — 2026-10-27)
 
-> **Status: PROPOSED.** No migrations or models exist yet. This schema must be validated against Laravel 13 conventions during Phase 1 and corrected in place; deviations are recorded in [DECISIONS.md](DECISIONS.md). JSON columns are used only for genuinely flexible metadata; core entities are normalized.
+> **Status: VALIDATED (Phase 1).** All tables migrated and model-backed; deviations from the original proposal are listed in [DECISIONS.md](DECISIONS.md) **D-009**. JSON columns are used only for genuinely flexible metadata; core entities are normalized.
 
 ## Infrastructure tables (Laravel framework)
 
@@ -184,6 +184,17 @@ Indexes: `(project_id, created_at)`, `(provider, status)`.
 ## Ownership & authorization summary
 
 - Every user-visible row chains to `projects.user_id` (directly or via project/scene FK). Policies authorize at project scope; scene/asset/job access is always transitively owned. Rules: [SECURITY.md](SECURITY.md).
+
+## Implementation notes (Phase 1 deviations & clarifications — see D-009)
+
+- **Enums:** "enum" columns are implemented as `VARCHAR` + PHP 8.3 backed enums in `app/Enums/` with `Rule::enum()` validation (native MySQL ENUM avoided for migration ergonomics).
+- **characters:** unique `(project_id, name)` enforced (duplicate names rejected within a project; allowed across projects).
+- **scenes:** unique `(project_id, number)` + index `(project_id, status)` enforced at DB level; reorder renumbers via a two-phase offset update inside a transaction to respect the unique index.
+- **speech_bubble_settings shape (validated on write):** nullable object, keys `style` (`classic|thought|shout`), `position` (`top|center|bottom`), `max_width_percent` (int 20–100), `background_color` (`#RRGGBB`), `font_size` (int 8–72); unknown keys rejected. Rendering semantics deferred to Phase 6.
+- **voice_config:** stored as validated JSON array; concrete shape intentionally deferred to Phase 5 (TTS).
+- **stories:** manual saves only use `draft|ready`; `generating|failed` are Phase 3 job states. Saving a story manually moves the project `draft → story_ready`.
+- **projects.status transitions implemented in Phase 1:** `draft → story_ready` (story saved) and `→ planned` (storyboard completion gate). Later transitions belong to Phases 3–6.
+- **Testing DB:** automated suite runs on `cartoon_studio_testing` (MySQL; see [PROGRESS.md](PROGRESS.md) note).
 
 ## Lifecycle summary
 
