@@ -13,7 +13,7 @@
 | D-007 | Real provider selection per capability (text/image/tts; music optional) | **Unresolved — Blocked on research** | Shortlist OpenAI / Google Gemini / ElevenLabs; must verify official docs (endpoints, models, pricing, commercial terms, reference-image support, TTS voice licensing) before writing adapter code. Procedure: [reference/API_RESEARCH.md](reference/API_RESEARCH.md). Needed by Phase 3 |
 | D-008 | FFmpeg/FFprobe binary paths configurable via env (`FFMPEG_BINARY`/`FFPROBE_BINARY`); never assume PATH | **Confirmed** | Audit found binaries missing on this machine |
 | D-009 | Database schema as documented in [DATABASE_DESIGN.md](DATABASE_DESIGN.md) | **Proposed** | Validate/correct during Phase 1; record deviations here |
-| D-010 | Use `#[Fillable([...])]` model attributes instead of legacy `$fillable` | **Proposed — verify** | Attributed properties must be confirmed against the installed Laravel 13 skeleton in Phase 0/1 before adoption; fall back to `$fillable` if unsupported |
+| D-010 | Use `#[Fillable([...])]` model attributes instead of legacy `$fillable` | **Confirmed** (2026-10-27) | Verified against installed framework 13.39.0: `Illuminate\Database\Eloquent\Attributes\{Fillable,Hidden,Visible,...}` exist and the skeleton `User` model uses `#[Fillable([...])]`/`#[Hidden([...])]`. Fall back to `$fillable` only if a future framework change breaks it |
 | D-011 | Character consistency strategy: character reference images + structured descriptions + fixed style anchors; explicitly best-effort, never promised | **Confirmed** | [RISKS_AND_LIMITATIONS.md](RISKS_AND_LIMITATIONS.md) R-1 |
 | D-012 | Still-image animation via FFmpeg (Ken Burns/zoompan/xfade); no AI video clips in MVP; future video capability only behind provider abstraction | **Confirmed** | Cost-efficient per brief |
 | D-013 | Licence gate: music/SFX render pre-flight requires `licence_verified=true`; unverified assets flagged, blocked, never silently cleared | **Confirmed** | [AUDIO_AND_LICENSING.md](AUDIO_AND_LICENSING.md) |
@@ -21,7 +21,7 @@
 | D-015 | Silent/speech-bubble modes render with zero audio provider dependency | **Confirmed** | Phase 5 acceptance criterion |
 | D-016 | Idempotent generation: reuse `ready` assets, fingerprint dedupe, per-scene retry | **Confirmed** | [COST_MANAGEMENT.md](COST_MANAGEMENT.md) |
 | D-017 | Duration tolerance for Σ(scene durations) vs target (30–90 s) | **Unresolved** | Propose ±2 s; confirm at Phase 1 implementation and update this row |
-| D-018 | Frontend component library: shadcn-vue "where appropriate" — minimal set, avoid heavy custom theming | **Proposed** | Decide concretely in Phase 0/1 while scaffolding UI kit |
+| D-018 | Frontend component library: shadcn-vue "where appropriate" — minimal set, avoid heavy custom theming | **Deferred to Phase 1** (2026-10-27) | Phase 0 shipped a plain-Tailwind base layout + login/dashboard (sufficient for placeholders); evaluate shadcn-vue when real Phase 1+ pages exist and only if trivially integrated |
 
 ## Rejected alternatives
 
@@ -37,5 +37,4 @@
 
 1. D-007 provider selection + terms verification (blocks Phases 3–5 real runs).
 2. D-017 duration tolerance value.
-3. D-010 `#[Fillable]` attribute support in installed skeleton.
-4. Speech-bubble rendering technique: server-side PNG pre-render (GD) vs FFmpeg drawtext — decide in Phase 6 after testing both on this machine's FFmpeg build.
+3. Speech-bubble rendering technique: server-side PNG pre-render (GD) vs FFmpeg drawtext — decide in Phase 6 after testing both on this machine's FFmpeg build.

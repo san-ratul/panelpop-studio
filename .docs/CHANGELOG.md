@@ -2,6 +2,15 @@
 
 > Significant documentation and implementation changes, newest first. Granular work logs live in phase docs; this file is the high-level history.
 
+## 2026-10-27 (Phase 0)
+
+- **Phase 0 — Laravel 13 foundation implemented.** Git initialized (`b43391e` docs commit, `2b10f92` app commit). Laravel 13.39.0 / PHP 8.3.33 scaffolded into the non-empty repo via temp-dir-then-move; Inertia (`inertiajs/inertia-laravel` 3.5 + `@inertiajs/vue3` 3.9.1, Vue 3.5.44), Tailwind CSS 4.3.3 (already wired via `@tailwindcss/vite` in the skeleton), Vite 8.3.5. **JavaScript only** — verified zero `.ts`/`.tsx` files and zero `lang="ts"` occurrences.
+- **Auth without registration.** Minimal Breeze-equivalent login/logout (session guard, rate-limited `LoginRequest`); seeded user `test@example.com` / `password` (dev only); `/register` returns 404 by design (no public registration, D-006).
+- **Config wired:** MySQL (`cartoon_studio`, Laragon root/no-password local), `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, `SESSION_DRIVER=database`; private `media-private` disk (`MEDIA_DISK`, storage/app/media, no public exposure); `config/ffmpeg.php` reading `FFMPEG_BINARY`/`FFPROBE_BINARY`/`FFMPEG_TIMEOUT_SECONDS` (D-008); `php artisan ffmpeg:check` health command (report-only).
+- **Verification:** `php artisan migrate` clean on MySQL (users, cache, cache_locks, sessions, jobs, job_batches, failed_jobs, migrations, password_reset_tokens exist); `php artisan test` — **15 passed, 46 assertions** (incl. seeded-user login, no-registration, ffmpeg config/health); `npm run build` succeeded; `php artisan about` shows Laravel 13.39.0 + mysql + database queue/session/cache. `ffmpeg:check` correctly reports MISSING on this machine (binaries still not installed) and OK when pointed at a runnable binary (covered by test).
+- **D-010 resolved:** `#[Fillable([...])]`/`#[Hidden([...])]` attributes confirmed supported (framework 13.39.0 ships `Illuminate\Database\Eloquent\Attributes\*`; skeleton `User` model uses them). D-018: shadcn-vue deferred to Phase 1; Phase 0 UI uses plain Tailwind.
+- FFmpeg/FFprobe remain **not installed** — unchanged blocker for Phase 6 (documented, no fake rendering).
+
 ## 2026-10-27
 
 - **Documentation baseline created.** Built the complete `.docs/` knowledge base (this directory): index, product overview, requirements, MVP scope, architecture, database design (proposed), provider integration, video rendering, audio/licensing, security, development rules, environment setup, implementation plan, testing strategy, cost management, deployment, decisions, risks, progress tracking, changelog, 8 phase specifications, and 3 reference documents (environment audit, API research, acceptance criteria).
