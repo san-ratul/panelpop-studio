@@ -22,6 +22,11 @@
 | D-016 | Idempotent generation: reuse `ready` assets, fingerprint dedupe, per-scene retry | **Confirmed** | [COST_MANAGEMENT.md](COST_MANAGEMENT.md) |
 | D-017 | Duration tolerance for Σ(scene durations) vs target (30–90 s) | **Confirmed** (2026-10-27, Phase 1): **±2.0 seconds absolute** | `DurationValidator::TOLERANCE_SECONDS = 2.0`; completion gate rejects sums outside `[target−2, target+2]` with a message naming actual sum, target and allowed range; empty scene sets rejected. Unit-tested at edges (58/62 s pass, 57.99/62.01 fail vs target 60) |
 | D-018 | Frontend component library: shadcn-vue "where appropriate" — minimal set, avoid heavy custom theming | **Deferred to Phase 1** (2026-10-27) | Phase 0 shipped a plain-Tailwind base layout + login/dashboard (sufficient for placeholders); evaluate shadcn-vue when real Phase 1+ pages exist and only if trivially integrated |
+| D-019 | Provider settings administration: any authenticated user may manage system provider settings in the MVP; no `is_admin` column yet | **Confirmed** (2026-10-27, Phase 2) | No public registration (users created manually) and per-user keys are deferred (D-006), so every authenticated user is the owner-operator. `is_admin` becomes a Phase 7+/SaaS decision; non-system (`owner_user_id` ≠ NULL) rows are already excluded from the settings page and manager |
+| D-020 | Provider registry starts empty of real vendors; only the testing-only `fake` provider ships in Phase 2 | **Confirmed** (2026-10-27, Phase 2) | D-007 unverified: adding vendor slugs before adapter verification would imply unimplemented capabilities. Settings validation rejects unknown slugs; real vendors are added to `config/ai.php` together with their verified adapters in Phase 3+ |
+| D-021 | `provider_settings.credentials` stays NOT NULL; empty string = "no stored credential"; `PROVIDER_CREDENTIAL_STORE=env\|database` selects preference with mutual fallback | **Confirmed** (2026-10-27, Phase 2) | Avoids altering the validated Phase 1 schema; env-first default matches SECURITY.md. Whitespace-only values treated as missing; `CredentialStore` is the single boundary that normalizes this |
+| D-022 | Per-project provider overrides ship as resolution logic + policy checks in Phase 2; override UI deferred to Phase 3 | **Confirmed (deferred UI)** (2026-10-27, Phase 2) | Data path + tests complete (override beats default; invalid/dangling/inactive/foreign overrides fail with actionable errors, no silent fallback). UI is only meaningful once Phase 3 generation actions exist; recorded here to prevent re-litigating |
+| D-023 | Vue SFC block order follows the shipped codebase convention: `<script setup>` → `<template>` (→ optional `<style>`) | **Confirmed** (2026-10-27, Phase 2) | Docs said template→script but every shipped SFC (Phase 0/1 and Phase 2) uses script-first; per development rule 1, disk wins and the docs were corrected. Uniformity preserved; revisit only with user approval |
 
 ## Rejected alternatives
 
@@ -35,6 +40,5 @@
 
 ## Open questions (tracked, not invented)
 
-1. D-007 provider selection + terms verification (blocks Phases 3–5 real runs).
-2. D-017 duration tolerance value.
-3. Speech-bubble rendering technique: server-side PNG pre-render (GD) vs FFmpeg drawtext — decide in Phase 6 after testing both on this machine's FFmpeg build.
+1. D-007 provider selection + terms verification (blocks Phases 3–5 real runs) — now the direct Phase 3 prerequisite; research procedure ready.
+2. Speech-bubble rendering technique: server-side PNG pre-render (GD) vs FFmpeg drawtext — decide in Phase 6 after testing both on this machine's FFmpeg build.

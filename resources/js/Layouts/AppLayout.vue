@@ -22,6 +22,13 @@ defineProps({
                     >
                         Dashboard
                     </Link>
+                    <Link
+                        v-if="authUser"
+                        :href="route('provider-settings.index')"
+                        class="text-sm text-gray-600 hover:text-gray-900"
+                    >
+                        AI providers
+                    </Link>
                 </div>
                 <div class="flex items-center gap-4">
                     <template v-if="authUser">

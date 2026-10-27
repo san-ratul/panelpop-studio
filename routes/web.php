@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProviderSettingsController;
 use App\Http\Controllers\SceneController;
 use App\Http\Controllers\SceneDialogueLineController;
 use App\Http\Controllers\StoryboardController;
@@ -24,6 +25,13 @@ Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->name('dashboard');
+
+Route::middleware('auth')->group(function () {
+    Route::get('/settings/providers', [ProviderSettingsController::class, 'index'])->name('provider-settings.index');
+    Route::post('/settings/providers', [ProviderSettingsController::class, 'store'])->name('provider-settings.store');
+    Route::patch('/settings/providers/{providerSetting}', [ProviderSettingsController::class, 'update'])->name('provider-settings.update');
+    Route::delete('/settings/providers/{providerSetting}', [ProviderSettingsController::class, 'destroy'])->name('provider-settings.destroy');
+});
 
 Route::middleware('auth')->scopeBindings()->group(function () {
     Route::get('/projects/create', [ProjectController::class, 'create'])->name('projects.create');

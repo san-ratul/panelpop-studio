@@ -18,7 +18,7 @@
 9. Use **Laravel 13** conventions; verify package compatibility against installed versions before adopting.
 10. Use **PHP 8.3+** features appropriately (typed code, attributes).
 11. **JavaScript only — never TypeScript** in any frontend file (`.vue`, `.js`, config). No `lang="ts"`, no `.ts` files, no JSDoc-typed TS builds.
-12. Vue SFC block order: `<template>` → `<script>` → optional `<style>`. Use Composition API or Options API consistently (pick one style per codebase; default Composition API `<script setup>` in plain JS).
+12. Vue SFC block order: follow the shipped codebase convention `<script setup>` → `<template>` → optional `<style>` (D-023; all Phase 0–2 SFCs use this order). Use Composition API `<script setup>` in plain JS.
 13. Tailwind CSS 4 via the project's Vite pipeline; shadcn-vue components only where genuinely useful.
 
 ## Honesty rules

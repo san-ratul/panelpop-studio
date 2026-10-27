@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ProviderCapability;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'config',
     'credentials',
 ])]
+#[Hidden(['credentials'])]
 class ProviderSettings extends Model
 {
     /** @use HasFactory<ProviderSettingsFactory> */

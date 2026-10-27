@@ -6,9 +6,9 @@ A web application that turns an English story into a short (30–90 s), vertical
 
 ## 2. Current Status
 
-**Documentation preparation phase. The application does NOT exist yet.** The repository `E:\video-generator` is empty except for this `.docs/` knowledge base. No Laravel app, no migrations, no models, no frontend. Do not assume any code exists.
+**Phases 0–2 complete** (Laravel 13 app with domain model and provider abstraction; 172 passing tests). Phase 3 (story generation) is next — it requires resolving provider selection first (D-007, [reference/API_RESEARCH.md](reference/API_RESEARCH.md)).
 
-**Current phase:** Phase 0 (Laravel 13 foundation) — pending user approval to start.
+**Current phase:** Phase 3 (Story generation) — awaiting user approval and provider verification.
 **Next actionable task:** see [PROGRESS.md](PROGRESS.md).
 
 ## 3. MVP Scope (short form)

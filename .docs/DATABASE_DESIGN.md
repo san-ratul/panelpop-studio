@@ -192,6 +192,8 @@ Indexes: `(project_id, created_at)`, `(provider, status)`.
 - **scenes:** unique `(project_id, number)` + index `(project_id, status)` enforced at DB level; reorder renumbers via a two-phase offset update inside a transaction to respect the unique index.
 - **speech_bubble_settings shape (validated on write):** nullable object, keys `style` (`classic|thought|shout`), `position` (`top|center|bottom`), `max_width_percent` (int 20–100), `background_color` (`#RRGGBB`), `font_size` (int 8–72); unknown keys rejected. Rendering semantics deferred to Phase 6.
 - **voice_config:** stored as validated JSON array; concrete shape intentionally deferred to Phase 5 (TTS).
+- **provider_settings.credentials:** NOT NULL text with Laravel `encrypted` cast; an **empty string means "no stored credential"** (key lives in env) — D-021. The model adds `#[Hidden(['credentials'])]` so serialization never emits it. Single default per capability+owner enforced by `App\AI\ProviderSettingsService` in a transaction.
+- **projects.provider_overrides:** maps capability → `provider_settings.id`; resolved by `App\AI\ProviderManager` with policy checks (exists, capability match, active, owner) — invalid overrides fail with actionable errors, no silent fallback. Delete of a setting cleans dangling references.
 - **stories:** manual saves only use `draft|ready`; `generating|failed` are Phase 3 job states. Saving a story manually moves the project `draft → story_ready`.
 - **projects.status transitions implemented in Phase 1:** `draft → story_ready` (story saved) and `→ planned` (storyboard completion gate). Later transitions belong to Phases 3–6.
 - **Testing DB:** automated suite runs on `cartoon_studio_testing` (MySQL; see [PROGRESS.md](PROGRESS.md) note).
