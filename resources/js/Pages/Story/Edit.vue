@@ -1,3 +1,149 @@
+<script setup>
+import { Link, router, useForm } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import AppLayout from '@/Layouts/AppLayout.vue';
+
+const props = defineProps({
+    authUser: {
+        type: Object,
+        default: null,
+    },
+    project: {
+        type: Object,
+        required: true,
+    },
+    story: {
+        type: Object,
+        default: null,
+    },
+    storyJobs: {
+        type: Array,
+        default: () => [],
+    },
+    storyJobActive: {
+        type: Boolean,
+        default: false,
+    },
+    storyIdea: {
+        type: String,
+        default: '',
+    },
+    planJobActive: {
+        type: Boolean,
+        default: false,
+    },
+});
+
+const form = useForm({
+    title: props.story?.title ?? '',
+    logline: props.story?.logline ?? '',
+    full_text: props.story?.full_text ?? '',
+});
+
+const generateForm = useForm({
+    story_idea: props.storyIdea,
+});
+
+const planForm = useForm({});
+
+const pollTimer = ref(null);
+
+const generationBusy = computed(() => generateForm.processing || props.storyJobActive);
+const planBusy = computed(() => planForm.processing || props.planJobActive);
+
+const hasReadyStory = computed(() => props.story?.status === 'ready');
+
+const STATUS_META = {
+    queued: { label: 'Queued', badge: 'bg-amber-50 text-amber-700', dot: 'bg-amber-400' },
+    running: { label: 'Generating', badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
+    succeeded: { label: 'Succeeded', badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    failed: { label: 'Failed', badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+    cancelled: { label: 'Cancelled', badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+};
+
+function statusMeta(status) {
+    return STATUS_META[status] ?? { label: status.replaceAll('_', ' '), badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' };
+}
+
+const STORY_STATUS_META = {
+    generating: { badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
+    ready: { badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    failed: { badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+};
+
+const storyStatusMeta = computed(() => STORY_STATUS_META[props.story?.status] ?? {
+    badge: 'bg-gray-100 text-gray-600',
+    dot: 'bg-gray-400',
+});
+
+function submit() {
+    form.put(route('story.save', props.project.id));
+}
+
+function generate() {
+    generateForm.post(route('story.generate', props.project.id), {
+        onSuccess: () => startPolling(),
+    });
+}
+
+function generatePlan() {
+    planForm.post(route('storyboard.generate-plan', props.project.id));
+}
+
+function startPolling() {
+    if (pollTimer.value !== null) {
+        return;
+    }
+
+    pollTimer.value = setInterval(() => {
+        router.reload({
+            only: ['storyJobs', 'storyJobActive', 'story', 'planJobActive'],
+        });
+    }, 3000);
+}
+
+function stopPolling() {
+    if (pollTimer.value !== null) {
+        clearInterval(pollTimer.value);
+        pollTimer.value = null;
+    }
+}
+
+// Re-entering the page while a story or scene-plan job runs must keep
+// refreshing (the plan button reads planJobActive); polling stops only when
+// both are done.
+watch(
+    [() => props.storyJobActive, () => props.planJobActive],
+    ([storyActive, planActive]) => {
+        if (!storyActive && !planActive) {
+            stopPolling();
+        }
+    },
+);
+
+// Populate the editor fields when a generation lands, without ever clobbering
+// unsaved user edits: the sync is skipped while the form is dirty, so edits
+// are preserved through polling and through failed generations.
+watch(
+    () => props.story,
+    (fresh) => {
+        if (!fresh || form.isDirty) {
+            return;
+        }
+
+        form.title = fresh.title ?? '';
+        form.logline = fresh.logline ?? '';
+        form.full_text = fresh.full_text ?? '';
+    },
+);
+
+onBeforeUnmount(stopPolling);
+
+if (props.storyJobActive || props.planJobActive) {
+    startPolling();
+}
+</script>
+
 <template>
     <AppLayout :auth-user="authUser">
         <div class="mx-auto max-w-3xl">
@@ -334,146 +480,3 @@
         </div>
     </AppLayout>
 </template>
-
-<script setup>
-import { Link, router, useForm } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import AppLayout from '@/Layouts/AppLayout.vue';
-
-const props = defineProps({
-    authUser: {
-        type: Object,
-        required: true,
-    },
-    project: {
-        type: Object,
-        required: true,
-    },
-    story: {
-        type: Object,
-        default: null,
-    },
-    storyJobs: {
-        type: Array,
-        default: () => [],
-    },
-    storyJobActive: {
-        type: Boolean,
-        default: false,
-    },
-    storyIdea: {
-        type: String,
-        default: '',
-    },
-    planJobActive: {
-        type: Boolean,
-        default: false,
-    },
-});
-
-const form = useForm({
-    title: props.story?.title ?? '',
-    logline: props.story?.logline ?? '',
-    full_text: props.story?.full_text ?? '',
-});
-
-const generateForm = useForm({
-    story_idea: props.storyIdea,
-});
-
-const planForm = useForm({});
-
-const pollTimer = ref(null);
-
-const generationBusy = computed(() => generateForm.processing || props.storyJobActive);
-const planBusy = computed(() => planForm.processing || props.planJobActive);
-
-const hasReadyStory = computed(() => props.story?.status === 'ready');
-
-const STATUS_META = {
-    queued: { label: 'Queued', badge: 'bg-amber-50 text-amber-700', dot: 'bg-amber-400' },
-    running: { label: 'Generating', badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
-    succeeded: { label: 'Succeeded', badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-    failed: { label: 'Failed', badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
-    cancelled: { label: 'Cancelled', badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
-};
-
-function statusMeta(status) {
-    return STATUS_META[status] ?? { label: status.replaceAll('_', ' '), badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' };
-}
-
-const STORY_STATUS_META = {
-    generating: { badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
-    ready: { badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-    failed: { badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
-};
-
-const storyStatusMeta = computed(() => STORY_STATUS_META[props.story?.status] ?? {
-    badge: 'bg-gray-100 text-gray-600',
-    dot: 'bg-gray-400',
-});
-
-function submit() {
-    form.put(route('story.save', props.project.id));
-}
-
-function generate() {
-    generateForm.post(route('story.generate', props.project.id), {
-        onSuccess: () => startPolling(),
-    });
-}
-
-function generatePlan() {
-    planForm.post(route('storyboard.generate-plan', props.project.id));
-}
-
-function startPolling() {
-    if (pollTimer.value !== null) {
-        return;
-    }
-
-    pollTimer.value = setInterval(() => {
-        router.reload({
-            only: ['storyJobs', 'storyJobActive', 'story'],
-        });
-    }, 3000);
-}
-
-function stopPolling() {
-    if (pollTimer.value !== null) {
-        clearInterval(pollTimer.value);
-        pollTimer.value = null;
-    }
-}
-
-watch(
-    () => props.storyJobActive,
-    (active) => {
-        if (!active) {
-            stopPolling();
-        }
-    },
-);
-
-// Populate the editor fields when a generation lands, without ever clobbering
-// unsaved user edits: the sync is skipped while the form is dirty, so edits
-// are preserved through polling and through failed generations.
-watch(
-    () => props.story,
-    (fresh) => {
-        if (!fresh || form.isDirty) {
-            return;
-        }
-
-        form.title = fresh.title ?? '';
-        form.logline = fresh.logline ?? '';
-        form.full_text = fresh.full_text ?? '';
-    },
-);
-
-onBeforeUnmount(stopPolling);
-
-if (props.storyJobActive) {
-    startPolling();
-}
-</script>

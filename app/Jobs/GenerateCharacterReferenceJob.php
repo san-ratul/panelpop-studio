@@ -155,7 +155,7 @@ final class GenerateCharacterReferenceJob implements ShouldQueue
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
-                'error_class' => $exception::class,
+                'error_class' => mb_substr($exception::class, 0, 120),
                 'error_message' => mb_substr($message, 0, 2000),
                 'attempts' => max($job->attempts, DB::table('provider_calls')->where('generation_job_id', $job->id)->count()),
             ]);

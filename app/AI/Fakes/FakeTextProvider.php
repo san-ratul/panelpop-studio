@@ -35,6 +35,17 @@ final class FakeTextProvider implements TextProvider
     {
         $this->scenario->throwIfFailure(ProviderCapability::Text);
 
+        if ($this->scenario->invalidPlanRequested()) {
+            return new ScenePlan(
+                scenes: [
+                    new PlannedScene(1, 200.0, 'A tidy workshop at night.', 'Cartoon workshop interior at night.', 'Narration that is far too long for one scene.'),
+                ],
+                usage: new ProviderUsage(inputTokens: 84, outputTokens: 640),
+                costActual: 0.002345,
+                meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-plan-invalid'],
+            );
+        }
+
         $sceneCount = 3;
         $perScene = round($constraints->targetDurationSeconds / $sceneCount, 2);
 

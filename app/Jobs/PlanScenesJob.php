@@ -23,6 +23,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -139,15 +140,22 @@ final class PlanScenesJob implements ShouldQueue
 
     private function failJob(GenerationJob $job, Throwable $exception): void
     {
-        $message = $exception instanceof ProviderException
-            ? $exception->getMessage()
-            : 'Scene planning failed unexpectedly. Check the application logs and try again.';
+        if ($exception instanceof ProviderException) {
+            $message = $exception->getMessage();
+        } elseif ($exception instanceof ValidationException) {
+            // Domain rejection of the generated plan (duration bounds, line
+            // counts, …): surface the specific reasons, not a generic message.
+            $message = 'The generated scene plan was rejected by validation: '
+                .collect($exception->errors())->flatten()->implode(' ');
+        } else {
+            $message = 'Scene planning failed unexpectedly. Check the application logs and try again.';
+        }
 
         DB::transaction(function () use ($job, $exception, $message): void {
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
-                'error_class' => $exception::class,
+                'error_class' => mb_substr($exception::class, 0, 120),
                 'error_message' => mb_substr($message, 0, 2000),
                 'attempts' => max($job->attempts, DB::table('provider_calls')->where('generation_job_id', $job->id)->count()),
             ]);

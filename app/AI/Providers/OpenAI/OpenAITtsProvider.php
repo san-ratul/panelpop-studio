@@ -93,7 +93,7 @@ final class OpenAITtsProvider implements ConfigurableProvider, TtsProvider
         $instructions = $voiceConfig['instructions'] ?? null;
         $speed = $voiceConfig['speed'] ?? null;
 
-        if (is_string($instructions) && trim($instructions) !== '' && ! $this->modelSupportsInstructions($model)) {
+        if (is_string($instructions) && trim($instructions) !== '' && $this->modelSupportsInstructions($model)) {
             $body['instructions'] = mb_substr(trim($instructions), 0, max(1, (int) config('ai.openai.tts.max_instructions_chars', 4096)));
         }
 

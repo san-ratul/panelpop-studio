@@ -164,6 +164,93 @@ class ImageGenerationTest extends TestCase
         $this->assertSame(ProviderCallStatus::Success, $call->status);
     }
 
+    public function test_regenerating_an_identical_scene_image_keeps_the_artifact_file_on_disk(): void
+    {
+        $this->fakeImageDefault();
+
+        $character = $this->addCharacter('Robby the robot');
+        $scene = $this->addScene(1, 'Robby the robot paints a glowing panel at night.');
+
+        $character->update(['reference_asset_id' => Asset::factory()->for($this->project)->create()->id]);
+
+        // Identical scene inputs produce the same content-addressed provider
+        // path, so the replace must keep the file the new row points at
+        // (regression: regeneration used to delete it).
+        $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
+
+        $asset = $scene->fresh()->imageAsset;
+
+        $this->assertNotNull($asset);
+        Storage::disk('media-private')->assertExists($asset->path);
+    }
+
+    public function test_a_non_provider_failure_marks_the_scene_failed_instead_of_leaving_it_generating(): void
+    {
+        $this->fakeImageDefault();
+
+        $character = $this->addCharacter('Robby the robot');
+        $scene = $this->addScene(1, 'Robby the robot paints a glowing panel at night.');
+
+        $character->update(['reference_asset_id' => Asset::factory()->for($this->project)->create()->id]);
+
+        $job = $this->project->generationJobs()->create([
+            'type' => GenerationJobType::SceneImage,
+            'status' => GenerationJobStatus::Queued,
+            'attempts' => 0,
+            'max_attempts' => 1,
+            'progress' => 0,
+        ]);
+
+        // A persistence-layer blow-up is not a ProviderException; the scene
+        // must still leave image_generating instead of being stuck there.
+        $exception = new class extends \RuntimeException {};
+
+        Asset::creating(function () use ($exception): void {
+            throw $exception;
+        });
+
+        try {
+            (new GenerateSceneImageJob($this->project->id, $job->id, $scene->id))->handle(
+                app(ProviderManager::class),
+                app(ProviderGateway::class),
+                app(ImageAssetPersister::class),
+            );
+
+            $this->fail('Expected the simulated persistence failure to bubble up.');
+        } catch (\Throwable $caught) {
+            $this->assertSame(get_class($exception), get_class($caught));
+        }
+
+        $this->assertSame(GenerationJobStatus::Failed, $job->refresh()->status);
+        $this->assertSame(SceneStatus::Failed, $scene->refresh()->status);
+
+        // error_class is a string(120) column: an anonymous-class name
+        // (file-path based, always long) must be truncated, not rejected.
+        $this->assertSame(mb_substr(get_class($exception), 0, 120), $job->error_class);
+    }
+
+    public function test_storyboard_page_reports_active_character_reference_jobs(): void
+    {
+        Queue::fake();
+
+        $character = $this->addCharacter('Robby the robot');
+        $this->addScene(1, 'Robby the robot paints a glowing panel at night.');
+
+        // The batch queues ONLY the reference job (the scene waits for it) —
+        // the storyboard page must still report an active job so the UI keeps
+        // polling while references render.
+        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+
+        $this->get(route('storyboard.show', $this->project))
+            ->assertOk()
+            ->assertInertia(function (InertiaAssert $page): void {
+                $page->component('Storyboard/Show')
+                    ->where('referenceJobActive', true)
+                    ->has('referenceJobs', 1);
+            });
+    }
+
     public function test_batch_dispatch_generates_references_before_scene_images(): void
     {
         $this->fakeImageDefault();

@@ -89,6 +89,56 @@ class OpenAITtsProviderTest extends TestCase
         $this->assertStringStartsWith('openai/audio/', $result->path);
     }
 
+    public function test_instructions_are_sent_for_models_that_support_them(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/audio/speech' => Http::response(
+                FakeAudioFixture::wav(1000),
+                200,
+                ['Content-Type' => 'audio/wav'],
+            ),
+        ]);
+
+        $resolved = $this->resolveOpenAI();
+
+        $resolved->ttsAdapter()->synthesize('Styled narration.', [
+            'voice' => 'coral',
+            'instructions' => 'Speak like a warm bedtime storyteller.',
+        ]);
+
+        Http::assertSent(function ($request): bool {
+            $body = $request->data();
+
+            return ($body['model'] ?? null) === 'gpt-4o-mini-tts'
+                && ($body['instructions'] ?? null) === 'Speak like a warm bedtime storyteller.';
+        });
+    }
+
+    public function test_instructions_are_omitted_for_models_documented_not_to_support_them(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/audio/speech' => Http::response(
+                FakeAudioFixture::wav(1000),
+                200,
+                ['Content-Type' => 'audio/wav'],
+            ),
+        ]);
+
+        $resolved = $this->resolveOpenAI(['model' => 'tts-1']);
+
+        $resolved->ttsAdapter()->synthesize('Legacy narration.', [
+            'voice' => 'alloy',
+            'instructions' => 'Speak like a warm bedtime storyteller.',
+        ]);
+
+        Http::assertSent(function ($request): bool {
+            $body = $request->data();
+
+            return ($body['model'] ?? null) === 'tts-1'
+                && ! array_key_exists('instructions', $body);
+        });
+    }
+
     public function test_default_voice_falls_back_to_the_documented_default(): void
     {
         Http::fake([

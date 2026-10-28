@@ -6,7 +6,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const props = defineProps({
     authUser: {
         type: Object,
-        required: true,
+        default: null,
     },
     project: {
         type: Object,
@@ -303,7 +303,14 @@ function startRender() {
                         {{ renderJobActive ? 'Rendering…' : videoAsset ? 'Render again' : 'Start render' }}
                     </button>
                     <p
-                        v-if="!ffmpegConfigured"
+                        v-if="renderForm.errors.render"
+                        class="mt-3 text-sm text-red-600"
+                        role="alert"
+                    >
+                        {{ renderForm.errors.render }}
+                    </p>
+                    <p
+                        v-else-if="!ffmpegConfigured"
                         class="mt-3 text-sm text-red-600"
                     >
                         FFmpeg/FFprobe are not configured on this machine. See the environment setup

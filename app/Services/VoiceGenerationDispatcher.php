@@ -49,6 +49,11 @@ final class VoiceGenerationDispatcher
      */
     public function dispatchForProject(Project $project, bool $force = false): array
     {
+        // Voice rows are never swept elsewhere (the scheduler only handles
+        // renders): heal stale queued/running rows before the dedupe checks
+        // so a crashed worker cannot block the batch forever.
+        $this->guard->cancelStale($project, GenerationJobType::VoiceGeneration);
+
         $summary = ['queued' => 0, 'silent' => false, 'narration' => 0, 'dialogue' => 0];
 
         if (self::modeRequiresNoAudio($project->presentation_mode)) {

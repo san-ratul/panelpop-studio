@@ -4,6 +4,8 @@ namespace Tests\Feature\Phase5;
 
 use App\AI\Exceptions\ProviderAuthException;
 use App\AI\Fakes\FakeProviderScenario;
+use App\AI\ProviderGateway;
+use App\AI\ProviderManager;
 use App\Enums\AssetStatus;
 use App\Enums\AssetType;
 use App\Enums\DialogueLineStatus;
@@ -11,6 +13,7 @@ use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Enums\ProviderCallStatus;
 use App\Enums\ProviderCapability;
+use App\Jobs\GenerateVoiceJob;
 use App\Models\Asset;
 use App\Models\Character;
 use App\Models\DialogueLine;
@@ -19,6 +22,7 @@ use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Scene;
 use App\Models\User;
+use App\Services\VoiceAudioPersister;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -249,6 +253,196 @@ class AudioGenerationTest extends TestCase
 
         $this->assertSame(Asset::query()->sole()->id, $scene->narration_audio_asset_id);
         $this->assertNotSame($firstAssetId, $scene->narration_audio_asset_id);
+    }
+
+    public function test_regenerating_identical_narration_keeps_the_artifact_file_on_disk(): void
+    {
+        $this->fakeTtsDefault();
+
+        $scene = $this->addScene(1);
+
+        // Identical text + voice config produce the same content-addressed
+        // provider path, so the replace must keep the file the new row
+        // points at (regression: regeneration used to delete it).
+        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('scenes.generate-narration', [$this->project, $scene]))->assertRedirect();
+
+        $asset = Asset::query()->sole();
+
+        $this->assertNotNull($asset->fresh());
+        Storage::disk('media-private')->assertExists($asset->path);
+    }
+
+    public function test_a_silent_mode_change_mid_queue_fails_the_dialogue_line_instead_of_leaving_it_generating(): void
+    {
+        $this->project->update(['presentation_mode' => 'dialogue']);
+
+        $scene = $this->addScene(1);
+        $line = $this->addLine($scene);
+
+        // The dispatcher flipped the line to generating before dispatching;
+        // simulate the project mode changing while the job is still queued.
+        $line->update(['status' => DialogueLineStatus::Generating]);
+
+        $job = $this->project->generationJobs()->create([
+            'type' => GenerationJobType::VoiceGeneration,
+            'status' => GenerationJobStatus::Queued,
+            'attempts' => 0,
+            'max_attempts' => 1,
+            'progress' => 0,
+        ]);
+
+        $this->project->update(['presentation_mode' => 'silent']);
+
+        (new GenerateVoiceJob($this->project->id, $job->id, 'dialogue', $scene->id, $line->id))->handle(
+            app(ProviderManager::class),
+            app(ProviderGateway::class),
+            app(VoiceAudioPersister::class),
+        );
+
+        $this->assertSame(GenerationJobStatus::Cancelled, $job->refresh()->status);
+        $this->assertSame(DialogueLineStatus::Failed, $line->refresh()->status);
+        $this->assertSame(0, ProviderCall::count());
+    }
+
+    public function test_a_non_provider_failure_marks_the_dialogue_line_failed_instead_of_leaving_it_generating(): void
+    {
+        $this->fakeTtsDefault();
+        $this->project->update(['presentation_mode' => 'dialogue']);
+
+        $scene = $this->addScene(1);
+        $line = $this->addLine($scene);
+        $line->update(['status' => DialogueLineStatus::Generating]);
+
+        $job = $this->project->generationJobs()->create([
+            'type' => GenerationJobType::VoiceGeneration,
+            'status' => GenerationJobStatus::Queued,
+            'attempts' => 0,
+            'max_attempts' => 1,
+            'progress' => 0,
+        ]);
+
+        // A persistence-layer blow-up is not a ProviderException; the line
+        // must still leave the generating state instead of being stuck.
+        $exception = new class extends \RuntimeException {};
+
+        Asset::creating(function () use ($exception): void {
+            throw $exception;
+        });
+
+        try {
+            (new GenerateVoiceJob($this->project->id, $job->id, 'dialogue', $scene->id, $line->id))->handle(
+                app(ProviderManager::class),
+                app(ProviderGateway::class),
+                app(VoiceAudioPersister::class),
+            );
+
+            $this->fail('Expected the simulated persistence failure to bubble up.');
+        } catch (\Throwable $caught) {
+            $this->assertSame(get_class($exception), get_class($caught));
+        }
+
+        $this->assertSame(GenerationJobStatus::Failed, $job->refresh()->status);
+        $this->assertSame(DialogueLineStatus::Failed, $line->refresh()->status);
+
+        // error_class is a string(120) column: an anonymous-class name
+        // (file-path based, always long) must be truncated, not rejected.
+        $this->assertSame(mb_substr(get_class($exception), 0, 120), $job->error_class);
+    }
+
+    public function test_an_emptied_dialogue_text_fails_the_line_instead_of_leaving_it_generating(): void
+    {
+        $this->fakeTtsDefault();
+        $this->project->update(['presentation_mode' => 'dialogue']);
+
+        $scene = $this->addScene(1);
+        $line = $this->addLine($scene);
+        $line->update(['status' => DialogueLineStatus::Generating]);
+
+        $job = $this->project->generationJobs()->create([
+            'type' => GenerationJobType::VoiceGeneration,
+            'status' => GenerationJobStatus::Queued,
+            'attempts' => 0,
+            'max_attempts' => 1,
+            'progress' => 0,
+        ]);
+
+        // Simulate the text being emptied after dispatch.
+        $line->update(['text' => '   ']);
+
+        (new GenerateVoiceJob($this->project->id, $job->id, 'dialogue', $scene->id, $line->id))->handle(
+            app(ProviderManager::class),
+            app(ProviderGateway::class),
+            app(VoiceAudioPersister::class),
+        );
+
+        $this->assertSame(GenerationJobStatus::Failed, $job->refresh()->status);
+        $this->assertSame(DialogueLineStatus::Failed, $line->refresh()->status);
+        $this->assertSame(0, ProviderCall::count());
+    }
+
+    public function test_generate_voice_heals_stale_voice_jobs_before_dispatching_new_ones(): void
+    {
+        $this->fakeTtsDefault();
+
+        $scene = $this->addScene(1);
+
+        // A worker crash left a queued row behind; without the heal it would
+        // block this subject and keep the UI polling forever.
+        $stale = $this->project->generationJobs()->create([
+            'type' => GenerationJobType::VoiceGeneration,
+            'status' => GenerationJobStatus::Queued,
+            'attempts' => 0,
+            'max_attempts' => 1,
+            'progress' => 0,
+            'payload' => ['subject' => 'narration:'.$scene->id, 'subject_type' => 'narration', 'scene_id' => $scene->id],
+        ]);
+
+        $stale->forceFill(['updated_at' => now()->subHours(2)])->saveQuietly();
+
+        $this->post(route('audio.generate', $this->project))->assertRedirect();
+
+        $this->assertSame(GenerationJobStatus::Cancelled, $stale->refresh()->status);
+
+        $fresh = GenerationJob::query()->where('id', '!=', $stale->id)->sole();
+
+        $this->assertSame(GenerationJobStatus::Succeeded, $fresh->status);
+    }
+
+    public function test_narration_voice_config_persists_for_the_project(): void
+    {
+        $this->patch(route('audio.narration-voice', $this->project), [
+            'voice' => 'coral',
+            'instructions' => '  Speak like a warm bedtime storyteller.  ',
+            'speed' => '1.15',
+        ])->assertRedirect(route('audio.show', $this->project));
+
+        $config = $this->project->refresh()->settings['narration_voice_config'];
+
+        $this->assertSame('coral', $config['voice']);
+        $this->assertSame('Speak like a warm bedtime storyteller.', $config['instructions']);
+        $this->assertSame(1.15, $config['speed']);
+    }
+
+    public function test_narration_voice_config_validates_its_fields(): void
+    {
+        $this->patch(route('audio.narration-voice', $this->project), [
+            'voice' => str_repeat('a', 121),
+            'speed' => '9',
+        ])->assertSessionHasErrors(['voice', 'speed']);
+
+        $this->assertNull($this->project->refresh()->settings['narration_voice_config'] ?? null);
+    }
+
+    public function test_strangers_cannot_change_the_narration_voice(): void
+    {
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->patch(route('audio.narration-voice', $this->project), ['voice' => 'coral'])
+            ->assertForbidden();
+
+        $this->assertNull($this->project->refresh()->settings['narration_voice_config'] ?? null);
     }
 
     public function test_invalid_fake_credentials_surface_the_auth_path_with_an_actionable_message(): void

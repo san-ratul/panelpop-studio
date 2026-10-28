@@ -24,7 +24,7 @@ final class ProviderCallRecorder
             'output_tokens' => $record->outputTokens,
             'duration_ms' => $record->durationMs,
             'request_fingerprint' => $record->requestFingerprint,
-            'error_class' => $record->errorClass,
+            'error_class' => $record->errorClass === null ? null : mb_substr($record->errorClass, 0, 120),
             'error_message' => $record->errorMessage,
         ]));
     }

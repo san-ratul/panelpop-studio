@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const props = defineProps({
     authUser: {
         type: Object,
-        required: true,
+        default: null,
     },
     project: {
         type: Object,
@@ -45,6 +45,14 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    referenceJobs: {
+        type: Array,
+        default: () => [],
+    },
+    referenceJobActive: {
+        type: Boolean,
+        default: false,
+    },
     hasReadyStory: {
         type: Boolean,
         default: false,
@@ -74,7 +82,7 @@ const imageForm = useForm({});
 
 const latestPlanJob = computed(() => props.planJobs[0] ?? null);
 
-const anyJobActive = computed(() => props.planJobActive || props.imageJobActive);
+const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.referenceJobActive);
 
 function submitAddScene() {
     addSceneForm.post(route('scenes.store', props.project.id), {
@@ -152,7 +160,7 @@ function startPolling() {
 
     pollTimer.value = setInterval(() => {
         router.reload({
-            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'scenes', 'characters', 'durationTotal'],
+            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'referenceJobs', 'referenceJobActive', 'scenes', 'characters', 'durationTotal'],
         });
     }, 3000);
 }
@@ -214,12 +222,12 @@ if (anyJobActive.value) {
                 </button>
                 <button
                     type="button"
-                    :disabled="imageForm.processing || imageJobActive || scenes.length === 0"
+                    :disabled="imageForm.processing || imageJobActive || referenceJobActive || scenes.length === 0"
                     :title="scenes.length === 0 ? 'Generate or add a scene plan first' : ''"
                     class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="generateImages"
                 >
-                    {{ imageJobActive ? 'Generating images…' : 'Generate scene images' }}
+                    {{ imageJobActive || referenceJobActive ? 'Generating images…' : 'Generate scene images' }}
                 </button>
                 <button
                     type="button"
@@ -279,6 +287,32 @@ if (anyJobActive.value) {
         </div>
 
         <div
+            v-for="job in referenceJobs"
+            :key="`reference-${job.id}`"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-medium capitalize">
+                    Character reference #{{ job.id }}<template v-if="job.payload?.character_name"> — {{ job.payload.character_name }}</template> — {{ job.status.replaceAll('_', ' ') }}
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
+            </p>
+        </div>
+
+        <div
             v-for="job in imageJobs"
             :key="`image-${job.id}`"
             class="mt-3 rounded-md border p-3 text-sm"
@@ -305,10 +339,17 @@ if (anyJobActive.value) {
         </div>
 
         <p
-            v-if="completeForm.errors.duration_sum"
+            v-if="completeForm.errors.duration_sum || completeForm.errors.status"
             class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-            {{ completeForm.errors.duration_sum }}
+            {{ completeForm.errors.duration_sum || completeForm.errors.status }}
+        </p>
+
+        <p
+            v-if="reorderForm.errors.scene_ids"
+            class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+            {{ reorderForm.errors.scene_ids }}
         </p>
 
         <div class="mt-6 space-y-4">

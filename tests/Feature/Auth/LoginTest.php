@@ -83,6 +83,42 @@ class LoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_users_are_rate_limited_after_repeated_failed_attempts(): void
+    {
+        $user = User::factory()->create();
+
+        foreach (range(1, 5) as $attempt) {
+            $this->post('/login', [
+                'email' => $user->email,
+                'password' => 'wrong-password',
+            ])->assertSessionHasErrors('email');
+        }
+
+        // Even the CORRECT password is rejected while throttled.
+        $response = $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $this->assertGuest();
+
+        $response->assertSessionHasErrors('email');
+
+        $this->assertStringContainsString(
+            'seconds',
+            (string) session('errors')->first('email'),
+        );
+    }
+
+    public function test_authenticated_users_are_redirected_away_from_the_login_screen(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->get('/login');
+
+        $response->assertRedirect(route('dashboard', absolute: false));
+    }
+
     public function test_users_can_logout(): void
     {
         $user = User::factory()->create();

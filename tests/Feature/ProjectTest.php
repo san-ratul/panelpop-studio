@@ -10,6 +10,7 @@ use App\Models\Scene;
 use App\Models\Story;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
 
 class ProjectTest extends TestCase
@@ -41,6 +42,41 @@ class ProjectTest extends TestCase
         $this->assertSame(60, $project->target_duration_seconds);
 
         $response->assertRedirect(route('story.edit', $project));
+    }
+
+    public function test_operation_feedback_is_shared_with_the_frontend(): void
+    {
+        $user = User::factory()->create();
+
+        // Regression: controllers flash success/warning feedback, but the
+        // Inertia middleware must share it as page props for AppLayout to
+        // render the banners.
+        $this->actingAs($user)
+            ->post('/projects', $this->validPayload())
+            ->assertRedirect();
+
+        $project = Project::query()->where('user_id', $user->id)->firstOrFail();
+
+        $this->followingRedirects()
+            ->get(route('story.edit', $project))
+            ->assertInertia(function (InertiaAssert $page): void {
+                $page->component('Story/Edit')
+                    ->where('flashSuccess', 'Project created. Add your story next.')
+                    ->where('flashWarning', null);
+            });
+    }
+
+    public function test_the_project_creation_screen_renders_with_its_props(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('projects.create'))
+            ->assertOk()
+            ->assertInertia(function (InertiaAssert $page): void {
+                $page->component('Projects/Create')
+                    ->has('presentationModes', 5);
+            });
     }
 
     public function test_project_creation_rejects_a_20_second_target(): void

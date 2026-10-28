@@ -6,7 +6,6 @@ use App\Models\Character;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class CharacterTest extends TestCase
@@ -25,11 +24,6 @@ class CharacterTest extends TestCase
 
     public function test_owner_can_create_a_character(): void
     {
-        if (! Schema::hasTable('users')) {
-            $exit = \Artisan::call('migrate:fresh', ['--force' => true]);
-            file_put_contents('C:/Users/sanra/AppData/Local/Temp/kilo/dbg3.txt',
-                'exit='.$exit."\n".\Artisan::output());
-        }
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
 

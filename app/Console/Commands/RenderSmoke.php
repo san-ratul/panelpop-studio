@@ -11,6 +11,7 @@ use App\Models\Scene;
 use App\Models\User;
 use App\Services\Render\RenderOrchestrator;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -29,6 +30,9 @@ class RenderSmoke extends Command
     protected $signature = 'render:smoke {--scenes=2} {--duration=15}';
 
     protected $description = 'Run a real FFmpeg render end-to-end on disposable fixture assets and print the ffprobe summary';
+
+    /** Fixture files written for the smoke run (disposed with the project). */
+    private array $fixturePaths = [];
 
     public function handle(RenderOrchestrator $orchestrator): int
     {
@@ -74,6 +78,7 @@ class RenderSmoke extends Command
 
             $path = sprintf('smoke/images/scene-%d-%s.png', $number, Str::ulid()->toBase32());
             $storage->put($path, $png);
+            $this->fixturePaths[] = $path;
 
             $assets[$number] = Asset::query()->create([
                 'project_id' => $project->id,
@@ -100,6 +105,7 @@ class RenderSmoke extends Command
         $wav = FakeAudioFixture::wav(5000);
         $audioPath = 'smoke/audio/narration-'.Str::ulid()->toBase32().'.wav';
         $storage->put($audioPath, $wav);
+        $this->fixturePaths[] = $audioPath;
 
         $narrationAsset = Asset::query()->create([
             'project_id' => $project->id,
@@ -152,6 +158,7 @@ class RenderSmoke extends Command
             $owner = $project->user;
             $project->forceDelete();
             $owner->forceDelete();
+            $this->disposeFixtures($storage);
 
             return self::FAILURE;
         }
@@ -202,9 +209,17 @@ class RenderSmoke extends Command
         // on the private disk for manual inspection.
         $project->forceDelete();
         $project->user->forceDelete();
+        $this->disposeFixtures($storage);
 
         $this->info('Smoke render finished.');
 
         return self::SUCCESS;
+    }
+
+    private function disposeFixtures(Filesystem $storage): void
+    {
+        foreach ($this->fixturePaths as $path) {
+            $storage->delete($path);
+        }
     }
 }

@@ -39,6 +39,7 @@ class StoryboardController extends Controller
         $planJobs = GenerationJobPresenter::recent($project, GenerationJobType::ScenePlanning);
         $imageJobs = GenerationJobPresenter::recent($project, GenerationJobType::SceneImage);
         $voiceJobs = GenerationJobPresenter::recent($project, GenerationJobType::VoiceGeneration);
+        $referenceJobs = GenerationJobPresenter::recent($project, GenerationJobType::CharacterReference);
 
         return Inertia::render('Storyboard/Show', [
             'project' => ProjectController::present($project),
@@ -56,6 +57,8 @@ class StoryboardController extends Controller
             'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
             'imageJobs' => $imageJobs,
             'imageJobActive' => GenerationJobPresenter::hasActive($imageJobs),
+            'referenceJobs' => $referenceJobs,
+            'referenceJobActive' => GenerationJobPresenter::hasActive($referenceJobs),
             'voiceJobs' => $voiceJobs,
             'voiceJobActive' => GenerationJobPresenter::hasActive($voiceJobs),
             'narrationEnabled' => VoiceGenerationDispatcher::modeAllowsNarration($project->presentation_mode),

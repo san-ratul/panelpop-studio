@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const props = defineProps({
     authUser: {
         type: Object,
-        required: true,
+        default: null,
     },
     presentationModes: {
         type: Array,

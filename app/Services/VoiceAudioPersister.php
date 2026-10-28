@@ -38,7 +38,7 @@ final class VoiceAudioPersister
     public function persistNarration(Scene $scene, AudioResult $result, GenerationJob $job, string $provider, ?string $model): Asset
     {
         return DB::transaction(function () use ($scene, $result, $job, $provider, $model): Asset {
-            $this->deleteExisting($scene->narrationAudioAsset);
+            $this->deleteExisting($scene->narrationAudioAsset, $result);
 
             $asset = $this->createAsset($scene->project_id, $result, $job, $provider, $model, $scene);
 
@@ -51,7 +51,7 @@ final class VoiceAudioPersister
     public function persistDialogueLine(DialogueLine $line, AudioResult $result, GenerationJob $job, string $provider, ?string $model): Asset
     {
         return DB::transaction(function () use ($line, $result, $job, $provider, $model): Asset {
-            $this->deleteExisting($line->audioAsset);
+            $this->deleteExisting($line->audioAsset, $result);
 
             $asset = $this->createAsset($line->scene->project_id, $result, $job, $provider, $model, $line->scene);
 
@@ -119,13 +119,21 @@ final class VoiceAudioPersister
         ];
     }
 
-    private function deleteExisting(?Asset $asset): void
+    /**
+     * Deletes the previous asset row and its file — unless the provider
+     * already rewrote the same content-addressed path, in which case the file
+     * IS the new artifact and must stay (the row is still replaced).
+     */
+    private function deleteExisting(?Asset $asset, AudioResult $result): void
     {
         if ($asset === null) {
             return;
         }
 
-        Storage::disk($asset->disk)->delete($asset->path);
+        if ($asset->disk !== $result->disk || $asset->path !== $result->path) {
+            Storage::disk($asset->disk)->delete($asset->path);
+        }
+
         $asset->delete();
     }
 }

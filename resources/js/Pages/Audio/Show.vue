@@ -6,7 +6,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 const props = defineProps({
     authUser: {
         type: Object,
-        required: true,
+        default: null,
     },
     project: {
         type: Object,
@@ -110,6 +110,21 @@ const allowedUseOptions = [
 const pollTimer = ref(null);
 
 const latestVoiceJob = computed(() => props.voiceJobs[0] ?? null);
+
+// The narration-voice endpoint validates voice/instructions/speed keys —
+// surface the first one (regression: the page used to read a nonexistent
+// "narration" key, hiding every 422 here).
+const narrationVoiceErrors = computed(() => {
+    const errors = narrationVoiceForm.errors;
+
+    return errors.voice ?? errors.speed ?? errors.instructions ?? '';
+});
+
+// Fallback for upload-licence validation keys that have no dedicated field
+// message (allowed_uses, licence_type, source_url, …).
+const firstUploadError = computed(() => Object.values(uploadForm.errors)[0] ?? '');
+
+const firstLicenceError = computed(() => Object.values(licenceForm.errors)[0] ?? '');
 
 function startPolling() {
     if (pollTimer.value !== null) {
@@ -347,8 +362,8 @@ function formatDuration(ms) {
                     Save narration voice
                 </button>
             </div>
-            <p v-if="narrationVoiceForm.errors.narration" class="mt-2 text-sm text-red-600">
-                {{ narrationVoiceForm.errors.narration }}
+            <p v-if="narrationVoiceErrors" class="mt-2 text-sm text-red-600">
+                {{ narrationVoiceErrors }}
             </p>
         </section>
 
@@ -553,6 +568,9 @@ function formatDuration(ms) {
             </div>
             <p v-if="uploadForm.errors.audio_file" class="mt-2 text-sm text-red-600">
                 {{ uploadForm.errors.audio_file }}
+            </p>
+            <p v-else-if="firstUploadError" class="mt-2 text-sm text-red-600">
+                {{ firstUploadError }}
             </p>
         </section>
 
@@ -759,6 +777,9 @@ function formatDuration(ms) {
                         </div>
                         <p v-if="licenceForm.errors.licence_verified" class="text-sm text-red-600">
                             {{ licenceForm.errors.licence_verified }}
+                        </p>
+                        <p v-else-if="firstLicenceError" class="text-sm text-red-600">
+                            {{ firstLicenceError }}
                         </p>
                     </form>
                 </li>

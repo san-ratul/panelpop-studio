@@ -87,12 +87,23 @@ final class GenerateVoiceJob implements ShouldQueue
         }
 
         if ($this->violatesSilentMode($project)) {
+            $message = 'This project mode requires no audio, so the voice job was cancelled before any provider call.';
+
             $job->update([
                 'status' => GenerationJobStatus::Cancelled,
                 'finished_at' => now(),
-                'error_message' => 'This project mode requires no audio, so the voice job was cancelled before any provider call.',
+                'error_message' => $message,
                 'error_class' => self::class,
             ]);
+
+            // A dialogue line the dispatcher already flipped to generating
+            // must not be left stuck when the mode changed mid-queue.
+            if ($line !== null) {
+                $line->update([
+                    'status' => DialogueLineStatus::Failed,
+                    'error_message' => $message,
+                ]);
+            }
 
             return;
         }
@@ -152,12 +163,23 @@ final class GenerateVoiceJob implements ShouldQueue
         }
 
         if (trim($text) === '') {
+            $message = 'There is no text to synthesize for this subject.';
+
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
                 'error_class' => self::class,
-                'error_message' => 'There is no text to synthesize for this subject.',
+                'error_message' => $message,
             ]);
+
+            // Same mid-queue guard: a dispatched dialogue line whose text was
+            // emptied must not stay stuck in generating.
+            if ($line !== null) {
+                $line->update([
+                    'status' => DialogueLineStatus::Failed,
+                    'error_message' => $message,
+                ]);
+            }
 
             return;
         }
@@ -215,12 +237,14 @@ final class GenerateVoiceJob implements ShouldQueue
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
-                'error_class' => $exception::class,
+                'error_class' => mb_substr($exception::class, 0, 120),
                 'error_message' => mb_substr($message, 0, 2000),
                 'attempts' => max($job->attempts, DB::table('provider_calls')->where('generation_job_id', $job->id)->count()),
             ]);
 
-            if ($line !== null && $exception instanceof ProviderException) {
+            // The line is reset to failed for ANY failure class: a dialogue
+            // line stuck in generating is never recoverable from the UI.
+            if ($line !== null) {
                 $line->update([
                     'status' => DialogueLineStatus::Failed,
                     'error_message' => mb_substr($message, 0, 2000),

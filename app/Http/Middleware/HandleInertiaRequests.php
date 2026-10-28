@@ -44,6 +44,11 @@ class HandleInertiaRequests extends Middleware
             'appName' => config('app.name'),
             'routes' => $this->routeManifest(),
             'status' => fn (): mixed => $request->session()->get('status'),
+            // Controllers flash operation feedback under these keys (dozens
+            // of redirect ->with('success'|'warning') calls); AppLayout
+            // renders them as banners.
+            'flashSuccess' => fn (): mixed => $request->session()->get('success'),
+            'flashWarning' => fn (): mixed => $request->session()->get('warning'),
         ];
     }
 

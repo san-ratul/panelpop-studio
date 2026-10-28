@@ -139,6 +139,24 @@ function linkClass(link) {
                 </div>
             </nav>
         </header>
+        <div
+            v-if="page.props.flashWarning"
+            class="border-b border-amber-200 bg-amber-50 text-sm text-amber-800"
+            role="alert"
+        >
+            <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+                {{ page.props.flashWarning }}
+            </div>
+        </div>
+        <div
+            v-if="page.props.flashSuccess"
+            class="border-b border-emerald-200 bg-emerald-50 text-sm text-emerald-800"
+            role="status"
+        >
+            <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+                {{ page.props.flashSuccess }}
+            </div>
+        </div>
         <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
             <slot />
         </main>

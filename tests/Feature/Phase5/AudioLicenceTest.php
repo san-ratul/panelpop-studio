@@ -207,4 +207,54 @@ class AudioLicenceTest extends TestCase
 
         $this->assertSame(0, Asset::query()->count());
     }
+
+    public function test_owner_can_delete_an_uploaded_audio_asset_and_its_file(): void
+    {
+        $this->post(
+            route('audio.upload', $this->project),
+            [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
+        )->assertRedirect();
+
+        $asset = Asset::query()->sole();
+        $path = $asset->path;
+
+        Storage::disk('media-private')->assertExists($path);
+
+        $this->delete(route('audio-assets.destroy', [$this->project, $asset]))
+            ->assertRedirect(route('audio.show', $this->project));
+
+        $this->assertSame(0, Asset::query()->count());
+        $this->assertSame(0, AudioLicence::query()->count());
+        Storage::disk('media-private')->assertMissing($path);
+    }
+
+    public function test_only_music_and_sfx_assets_can_be_deleted_through_the_audio_workspace(): void
+    {
+        $sceneImage = Asset::factory()->for($this->project)->create([
+            'type' => AssetType::SceneImage,
+            'status' => AssetStatus::Ready,
+        ]);
+
+        $this->delete(route('audio-assets.destroy', [$this->project, $sceneImage]))
+            ->assertNotFound();
+
+        $this->assertSame(1, Asset::query()->count());
+    }
+
+    public function test_strangers_cannot_delete_audio_assets(): void
+    {
+        $this->post(
+            route('audio.upload', $this->project),
+            [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
+        )->assertRedirect();
+
+        $asset = Asset::query()->sole();
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->delete(route('audio-assets.destroy', [$this->project, $asset]))
+            ->assertForbidden();
+
+        $this->assertSame(1, Asset::query()->count());
+    }
 }

@@ -22,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ScenePlanningTest extends TestCase
@@ -302,6 +303,25 @@ class ScenePlanningTest extends TestCase
 
         $this->assertTrue($this->project->scenes()->whereKey($before->id)->exists());
         $this->assertSame(StoryStatus::Ready, $this->project->fresh()->story->status);
+    }
+
+    public function test_a_domain_invalid_plan_records_the_specific_rejection_reasons(): void
+    {
+        $this->fakeTextDefault();
+        app(FakeProviderScenario::class)->scriptInvalidPlan();
+
+        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+
+        $job = GenerationJob::query()->latest('id')->first();
+
+        $this->assertSame(GenerationJobStatus::Failed, $job->status);
+        // Regression: the job used to record a generic "failed unexpectedly"
+        // message here, hiding WHY the generated plan was rejected.
+        $this->assertSame(ValidationException::class, $job->error_class);
+        $this->assertStringContainsString('rejected by validation', (string) $job->error_message);
+        $this->assertStringContainsString('may not exceed 120 s', (string) $job->error_message);
+
+        $this->assertSame(0, $this->project->scenes()->count());
     }
 
     public function test_storyboard_page_shows_plan_jobs(): void

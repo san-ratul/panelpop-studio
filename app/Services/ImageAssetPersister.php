@@ -31,7 +31,7 @@ final class ImageAssetPersister
         ?string $model,
     ): Asset {
         return DB::transaction(function () use ($character, $result, $job, $provider, $model): Asset {
-            $this->deleteExisting($character->referenceAsset);
+            $this->deleteExisting($character->referenceAsset, $result);
 
             $asset = Asset::query()->create([
                 'project_id' => $character->project_id,
@@ -59,7 +59,7 @@ final class ImageAssetPersister
         ?string $model,
     ): Asset {
         return DB::transaction(function () use ($scene, $result, $job, $provider, $model): Asset {
-            $this->deleteExisting($scene->imageAsset);
+            $this->deleteExisting($scene->imageAsset, $result);
 
             $asset = Asset::query()->create([
                 'project_id' => $scene->project_id,
@@ -101,13 +101,21 @@ final class ImageAssetPersister
         ];
     }
 
-    private function deleteExisting(?Asset $asset): void
+    /**
+     * Deletes the previous asset row and its file — unless the provider
+     * already rewrote the same content-addressed path, in which case the file
+     * IS the new artifact and must stay (the row is still replaced).
+     */
+    private function deleteExisting(?Asset $asset, ImageResult $result): void
     {
         if ($asset === null) {
             return;
         }
 
-        Storage::disk($asset->disk)->delete($asset->path);
+        if ($asset->disk !== $result->disk || $asset->path !== $result->path) {
+            Storage::disk($asset->disk)->delete($asset->path);
+        }
+
         $asset->delete();
     }
 }

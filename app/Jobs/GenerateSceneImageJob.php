@@ -211,12 +211,15 @@ final class GenerateSceneImageJob implements ShouldQueue
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
-                'error_class' => $exception::class,
+                'error_class' => mb_substr($exception::class, 0, 120),
                 'error_message' => mb_substr($message, 0, 2000),
                 'attempts' => max($job->attempts, DB::table('provider_calls')->where('generation_job_id', $job->id)->count()),
             ]);
 
-            if ($scene !== null && $exception instanceof ProviderException) {
+            // The scene is reset to failed for ANY failure class: a scene
+            // stuck in image_generating is never recoverable from the UI and
+            // would block the render pre-flight forever.
+            if ($scene !== null) {
                 $scene->update([
                     'status' => SceneStatus::Failed,
                     'error_message' => mb_substr($message, 0, 2000),

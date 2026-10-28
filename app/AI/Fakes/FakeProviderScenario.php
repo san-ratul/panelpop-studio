@@ -14,9 +14,27 @@ final class FakeProviderScenario
 
     private array $behaviors = [];
 
+    private bool $invalidPlan = false;
+
     public function succeed(): void
     {
         $this->behaviors = [];
+        $this->invalidPlan = false;
+    }
+
+    /**
+     * Makes planScenes return a plan that violates the domain validation
+     * rules (scene duration over the documented bound) so tests can exercise
+     * the validation-rejection path inside the plan persister.
+     */
+    public function scriptInvalidPlan(): void
+    {
+        $this->invalidPlan = true;
+    }
+
+    public function invalidPlanRequested(): bool
+    {
+        return $this->invalidPlan;
     }
 
     public function failAuth(?ProviderCapability $capability = null): void
@@ -47,6 +65,7 @@ final class FakeProviderScenario
     public function reset(): void
     {
         $this->behaviors = [];
+        $this->invalidPlan = false;
     }
 
     public function throwIfFailure(ProviderCapability $capability): void
