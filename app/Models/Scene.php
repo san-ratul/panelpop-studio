@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'error_message',
     'rendered_at',
     'image_asset_id',
+    'narration_audio_asset_id',
 ])]
 class Scene extends Model
 {
@@ -52,6 +53,11 @@ class Scene extends Model
     public function imageAsset(): BelongsTo
     {
         return $this->belongsTo(Asset::class, 'image_asset_id');
+    }
+
+    public function narrationAudioAsset(): BelongsTo
+    {
+        return $this->belongsTo(Asset::class, 'narration_audio_asset_id');
     }
 
     public function dialogueLines(): HasMany

@@ -45,7 +45,7 @@ Indexes: `user_id`. Uniqueness: none.
 | name | varchar(120) | |
 | description | text | Structured description reused in prompts |
 | consistency_notes | text nullable | Style anchors for image prompts |
-| voice_config | JSON nullable | Voice id/style/speed for TTS |
+| voice_config | JSON nullable | **Shape resolved in Phase 5 (D-026):** `{voice?: string≤120, instructions?: string≤4096, speed?: numeric 0.25–4.0}` — validated on write by `App\Rules\CharacterVoiceConfig` (unknown keys rejected); empty/null `voice` = provider-default fallback (`ai.openai.tts.default_voice`) |
 | reference_asset_id | FK → assets.id, nullOnDelete | Character reference image |
 | timestamps | | |
 
@@ -63,6 +63,7 @@ Indexes: `project_id`. Uniqueness: `(project_id, name)` proposed — confirm des
 | image_prompt | text | |
 | narration_text | text nullable | |
 | image_asset_id | FK → assets.id, nullOnDelete | |
+| narration_audio_asset_id | FK → assets.id, nullOnDelete | **Phase 5:** narration-block voice audio (same pattern as `image_asset_id`); populated by `GenerateVoiceJob` via `VoiceAudioPersister` (D-027) |
 | speech_bubble_settings | JSON nullable | Per-scene bubble styling/placement |
 | status | enum: pending, planning, image_pending, image_generating, ready, failed | Render only from `ready` |
 | error_message | text nullable | Actionable, no traces/secrets |
@@ -191,7 +192,8 @@ Indexes: `(project_id, created_at)`, `(provider, status)`.
 - **characters:** unique `(project_id, name)` enforced (duplicate names rejected within a project; allowed across projects).
 - **scenes:** unique `(project_id, number)` + index `(project_id, status)` enforced at DB level; reorder renumbers via a two-phase offset update inside a transaction to respect the unique index.
 - **speech_bubble_settings shape (validated on write):** nullable object, keys `style` (`classic|thought|shout`), `position` (`top|center|bottom`), `max_width_percent` (int 20–100), `background_color` (`#RRGGBB`), `font_size` (int 8–72); unknown keys rejected. Rendering semantics deferred to Phase 6.
-- **voice_config:** stored as validated JSON array; concrete shape intentionally deferred to Phase 5 (TTS).
+- **voice_config:** shape resolved in Phase 5 (D-026): `{voice?, instructions?, speed?}` validated on write; unknown keys rejected; empty voice = provider-default fallback. Project-level narration voice: `projects.settings.narration_voice_config` (same shape, edited on the audio page).
+- **scenes.narration_audio_asset_id (Phase 5):** nullable FK → `assets` (nullOnDelete) added by migration `2026_10_28_000001`; narration voice artifacts are asset rows of type `voice_audio` with `meta.duration_ms`/`duration_source`/`exceeds_scene_duration`/`provenance=ai_tts` — same ownership-chain/policy pattern as `image_asset_id` (D-027).
 - **provider_settings.credentials:** NOT NULL text with Laravel `encrypted` cast; an **empty string means "no stored credential"** (key lives in env) — D-021. The model adds `#[Hidden(['credentials'])]` so serialization never emits it. Single default per capability+owner enforced by `App\AI\ProviderSettingsService` in a transaction.
 - **projects.provider_overrides:** maps capability → `provider_settings.id`; resolved by `App\AI\ProviderManager` with policy checks (exists, capability match, active, owner) — invalid overrides fail with actionable errors, no silent fallback. Delete of a setting cleans dangling references.
 - **stories:** manual saves only use `draft|ready`; `generating|failed` are Phase 3 job states. Saving a story manually moves the project `draft → story_ready`.

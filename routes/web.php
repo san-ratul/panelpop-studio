@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasswordController;
+use App\Http\Controllers\ProjectAudioController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProviderSettingsController;
 use App\Http\Controllers\SceneController;
@@ -60,6 +61,15 @@ Route::middleware('auth')->scopeBindings()->group(function () {
     Route::post('/projects/{project}/storyboard/complete', [StoryboardController::class, 'complete'])->name('storyboard.complete');
     Route::post('/projects/{project}/storyboard/generate-plan', [StoryboardController::class, 'generatePlan'])->name('storyboard.generate-plan');
     Route::post('/projects/{project}/storyboard/generate-images', [StoryboardController::class, 'generateImages'])->name('storyboard.generate-images');
+
+    Route::get('/projects/{project}/audio', [ProjectAudioController::class, 'show'])->name('audio.show');
+    Route::post('/projects/{project}/audio/upload', [ProjectAudioController::class, 'storeUpload'])->name('audio.upload');
+    Route::post('/projects/{project}/audio/generate', [ProjectAudioController::class, 'generateVoice'])->name('audio.generate');
+    Route::patch('/projects/{project}/audio/narration-voice', [ProjectAudioController::class, 'updateNarrationVoice'])->name('audio.narration-voice');
+    Route::patch('/projects/{project}/audio/assets/{asset}/licence', [ProjectAudioController::class, 'updateLicence'])->name('audio-assets.update-licence');
+    Route::delete('/projects/{project}/audio/assets/{asset}', [ProjectAudioController::class, 'destroyAsset'])->name('audio-assets.destroy');
+    Route::post('/projects/{project}/scenes/{scene}/generate-narration', [ProjectAudioController::class, 'generateNarration'])->name('scenes.generate-narration');
+    Route::post('/projects/{project}/scenes/{scene}/dialogue-lines/{dialogueLine}/generate-voice', [ProjectAudioController::class, 'generateLineVoice'])->name('dialogue-lines.generate-voice');
 
     Route::post('/projects/{project}/scenes', [SceneController::class, 'store'])->name('scenes.store');
     Route::post('/projects/{project}/scenes/reorder', [SceneController::class, 'reorder'])->name('scenes.reorder');

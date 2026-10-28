@@ -71,19 +71,24 @@ TEXT_API_KEY=
 IMAGE_PROVIDER=                  # openai (Phase 4, verified)
 IMAGE_MODEL=                     # default gpt-image-2.5-flare (documented snapshot: gpt-image-2.5-flare-2026-09-08)
 IMAGE_API_KEY=
-TTS_PROVIDER=
-TTS_MODEL=
+TTS_PROVIDER=                    # openai (Phase 5, verified — deprecated with shutdown 2027-01-06)
+TTS_MODEL=                       # default gpt-4o-mini-tts (documented snapshot: gpt-4o-mini-tts-2025-12-15)
 TTS_API_KEY=
-MUSIC_PROVIDER=                  # optional / deferred
+MUSIC_PROVIDER=                  # AI music stays DISABLED (no verified terms — Phase 5 decision D-007)
 MUSIC_API_KEY=
 
 # OpenAI adapter options (verified 2026-10-28 — see reference/API_RESEARCH.md):
 #   Text:  OPENAI_MAX_OUTPUT_TOKENS_STORY / _PLAN, OPENAI_TEXT_REASONING_EFFORT, OPENAI_STORE_RESPONSES
 #   Image: OPENAI_IMAGE_SIZE_CHARACTER (1024x1024), OPENAI_IMAGE_SIZE_SCENE (1024x1536),
 #          OPENAI_IMAGE_QUALITY (low|medium|high|xhigh|max), OPENAI_IMAGE_OUTPUT_FORMAT (png|webp|jpeg)
+#   TTS:   OPENAI_TTS_MODEL (default gpt-4o-mini-tts), OPENAI_TTS_DEFAULT_VOICE (default alloy;
+#          documented built-ins: alloy ash ballad coral echo fable onyx nova sage shimmer verse marin cedar),
+#          OPENAI_TTS_RESPONSE_FORMAT (default wav; documented: mp3|opus|aac|flac|wav|pcm)
+#          — note: the verified Speech-API models are deprecated with shutdown 2027-01-06
+#          (documented replacement: gpt-realtime-2.1-mini via the Realtime API — future adapter change)
 
 DAILY_PROVIDER_BUDGET_USD=       # optional cost ceiling
-MAX_AUDIO_UPLOAD_MB=20           # placeholder; finalize in Phase 5
+MAX_AUDIO_UPLOAD_MB=20           # final: enforced in Phase 5 upload validation (Form Request + config/audio.php)
 ```
 
 `.env.example` must be created in Phase 0 mirroring this list with empty placeholders and comments; `.env` is git-ignored.

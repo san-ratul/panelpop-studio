@@ -8,6 +8,7 @@ use App\AI\Fakes\FakeTtsProvider;
 use App\AI\Providers\OpenAI\OpenAICostEstimator;
 use App\AI\Providers\OpenAI\OpenAIImageProvider;
 use App\AI\Providers\OpenAI\OpenAITextProvider;
+use App\AI\Providers\OpenAI\OpenAITtsProvider;
 
 $budgetCeiling = env('DAILY_PROVIDER_BUDGET_USD');
 
@@ -64,10 +65,11 @@ return [
     'providers' => [
         'openai' => [
             'label' => 'OpenAI',
-            'capabilities' => ['text', 'image'],
+            'capabilities' => ['text', 'image', 'tts'],
             'adapters' => [
                 'text' => OpenAITextProvider::class,
                 'image' => OpenAIImageProvider::class,
+                'tts' => OpenAITtsProvider::class,
             ],
         ],
         'fake' => [
@@ -140,6 +142,68 @@ return [
         // https://developers.openai.com/api/docs/models/gpt-image-2.5-flare
         'image_pricing_per_mtok' => [
             'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
+        ],
+
+        // Speech API settings (D-007 tts portion, verified 2026-10-28 — see
+        // .docs/reference/API_RESEARCH.md for sources, pricing, deprecation
+        // notice and dates). Endpoint: POST {base}/audio/speech (JSON body,
+        // bearer key; binary audio response).
+        //
+        // DEPRECATION NOTICE (verified 2026-10-28): tts-1, tts-1-hd and
+        // gpt-4o-mini-tts are documented as deprecated with shutdown on
+        // 2027-01-06. OpenAI's documented replacement (gpt-realtime-2.1-mini
+        // via the Realtime API) is a different API workflow and is NOT
+        // supported on /v1/audio/speech — migrating requires a new adapter.
+        // The Speech API remains fully functional until the shutdown date.
+        'tts' => [
+            // Documented default model for /v1/audio/speech (verified on the
+            // official Speech API reference, 2026-10-28).
+            'default_model' => env('OPENAI_TTS_MODEL', 'gpt-4o-mini-tts'),
+
+            // Supported built-in voices, exactly as documented in the
+            // createSpeech API reference (verified 2026-10-28). A custom voice
+            // object ({id}) also exists in the API but is out of MVP scope.
+            'voices' => [
+                'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx',
+                'nova', 'sage', 'shimmer', 'verse', 'marin', 'cedar',
+            ],
+
+            // Voice used when a narration block / dialogue line has no voice
+            // configured (documented fallback).
+            'default_voice' => env('OPENAI_TTS_DEFAULT_VOICE', 'alloy'),
+
+            // Output format: wav is FFmpeg-friendly, decodes losslessly and is
+            // documented as one of the fastest formats; duration can be read
+            // exactly from the WAV header without FFprobe. Documented formats:
+            // mp3 (default), opus, aac, flac, wav, pcm.
+            'response_format' => env('OPENAI_TTS_RESPONSE_FORMAT', 'wav'),
+
+            // Documented limits (createSpeech API reference, 2026-10-28).
+            'max_input_chars' => 4096,
+            'max_instructions_chars' => 4096,
+            'speed_min' => 0.25,
+            'speed_max' => 4.0,
+
+            // `instructions` is documented as NOT working with tts-1/tts-1-hd;
+            // adapters omit it for those models (prefix match).
+            'models_without_instructions' => ['tts-1', 'tts-1-hd'],
+
+            // Verified list pricing for gpt-4o-mini-tts, USD per 1M tokens
+            // (model page, 2026-10-28): input text tokens $0.60, output audio
+            // tokens $12.00.
+            'pricing_per_mtok' => [
+                'gpt-4o-mini-tts' => ['text_input' => 0.60, 'audio_output' => 12.00],
+            ],
+
+            // Conservative PRE-CALL ESTIMATE constants (NOT provider-reported
+            // facts): OpenAI bills text input tokens (documented max 2000
+            // input tokens) and audio output tokens; no tokens-per-second
+            // figure is documented, so the audio output estimate is a
+            // deliberate upper bound for the budget ceiling. Actual cost is
+            // only ever recorded from provider-reported usage (the speech
+            // response carries no usage payload, so cost_actual stays null).
+            'estimate_text_tokens_overhead' => 16,
+            'estimate_audio_output_tokens_per_request' => 25000,
         ],
     ],
 

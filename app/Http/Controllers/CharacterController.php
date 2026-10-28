@@ -52,6 +52,8 @@ class CharacterController extends Controller
         return Inertia::render('Characters/Edit', [
             'project' => ProjectController::present($project),
             'character' => self::present($character),
+            'voiceOptions' => array_values((array) config('ai.openai.tts.voices', [])),
+            'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
         ]);
     }
 

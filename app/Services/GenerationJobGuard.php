@@ -7,6 +7,7 @@ use App\Enums\GenerationJobType;
 use App\Jobs\GenerateCharacterReferenceJob;
 use App\Jobs\GenerateSceneImageJob;
 use App\Jobs\GenerateStoryJob;
+use App\Jobs\GenerateVoiceJob;
 use App\Jobs\PlanScenesJob;
 use App\Models\GenerationJob;
 use App\Models\Project;
@@ -66,6 +67,27 @@ final class GenerationJobGuard
             ->where('type', $type->value)
             ->whereIn('status', [GenerationJobStatus::Queued->value, GenerationJobStatus::Running->value])
             ->where("payload->{$subjectKey}", $subjectId)
+            ->where('updated_at', '>=', now()->subMinutes(self::STALE_MINUTES))
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * String-subject variant of activeJobForSubject (Phase 5 voice jobs use
+     * composite subjects like "narration:{sceneId}" / "line:{lineId}" in the
+     * job payload).
+     */
+    public function activeJobForSubjectValue(
+        Project $project,
+        GenerationJobType $type,
+        string $subjectKey,
+        string $subjectValue,
+    ): ?GenerationJob {
+        return GenerationJob::query()
+            ->where('project_id', $project->id)
+            ->where('type', $type->value)
+            ->whereIn('status', [GenerationJobStatus::Queued->value, GenerationJobStatus::Running->value])
+            ->where("payload->{$subjectKey}", $subjectValue)
             ->where('updated_at', '>=', now()->subMinutes(self::STALE_MINUTES))
             ->orderByDesc('id')
             ->first();
@@ -143,6 +165,14 @@ final class GenerationJobGuard
                 $project->id,
                 $job->id,
                 (int) ($payload['scene_id'] ?? 0),
+                (bool) ($payload['force'] ?? false),
+            ),
+            GenerationJobType::VoiceGeneration => new GenerateVoiceJob(
+                $project->id,
+                $job->id,
+                (string) ($payload['subject_type'] ?? ''),
+                (int) ($payload['scene_id'] ?? 0),
+                ($payload['dialogue_line_id'] ?? null) !== null ? (int) $payload['dialogue_line_id'] : null,
                 (bool) ($payload['force'] ?? false),
             ),
             default => throw new LogicException(sprintf('No queue job is wired for generation job type "%s".', $type->value)),

@@ -12,6 +12,7 @@ use App\Services\DurationValidator;
 use App\Services\GenerationJobGuard;
 use App\Services\SceneImageDispatcher;
 use App\Services\ScenePlanValidator;
+use App\Services\VoiceGenerationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -30,13 +31,14 @@ class StoryboardController extends Controller
     {
         $this->authorize('view', $project);
 
-        $scenes = $project->scenes()->with('dialogueLines.character')->get()
+        $scenes = $project->scenes()->with(['dialogueLines.character.audioAsset', 'narrationAudioAsset'])->get()
             ->map(static fn ($scene) => SceneController::present($scene))
             ->values()
             ->all();
 
         $planJobs = GenerationJobPresenter::recent($project, GenerationJobType::ScenePlanning);
         $imageJobs = GenerationJobPresenter::recent($project, GenerationJobType::SceneImage);
+        $voiceJobs = GenerationJobPresenter::recent($project, GenerationJobType::VoiceGeneration);
 
         return Inertia::render('Storyboard/Show', [
             'project' => ProjectController::present($project),
@@ -54,6 +56,11 @@ class StoryboardController extends Controller
             'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
             'imageJobs' => $imageJobs,
             'imageJobActive' => GenerationJobPresenter::hasActive($imageJobs),
+            'voiceJobs' => $voiceJobs,
+            'voiceJobActive' => GenerationJobPresenter::hasActive($voiceJobs),
+            'narrationEnabled' => VoiceGenerationDispatcher::modeAllowsNarration($project->presentation_mode),
+            'dialogueEnabled' => VoiceGenerationDispatcher::modeAllowsDialogue($project->presentation_mode),
+            'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($project->presentation_mode),
             'hasReadyStory' => ($project->story?->status ?? null) === StoryStatus::Ready,
         ]);
     }

@@ -6,8 +6,8 @@ use App\AI\Cost\CostEstimator;
 use App\Enums\ProviderCapability;
 
 /**
- * Pre-call cost estimates for the OpenAI text capability, computed from the
- * verified per-token pricing recorded in .docs/reference/API_RESEARCH.md
+ * Pre-call cost estimates for the OpenAI text/image/tts capabilities, computed
+ * from the verified per-token pricing recorded in .docs/reference/API_RESEARCH.md
  * (verified 2026-10-28). The estimate is a deliberately conservative upper
  * bound built from measurable request sizes plus a documented prompt-overhead
  * constant; the actual cost is only ever recorded from provider-reported usage.
@@ -35,6 +35,10 @@ final class OpenAICostEstimator implements CostEstimator
 
         if ($capability === ProviderCapability::Image) {
             return $this->estimateImage($model, $input);
+        }
+
+        if ($capability === ProviderCapability::Tts) {
+            return $this->estimateTts($model, $input);
         }
 
         return null;
@@ -113,6 +117,49 @@ final class OpenAICostEstimator implements CostEstimator
         $cost = ($textTokens / 1_000_000) * (float) $rates['text_input']
             + ($imageInputTokens / 1_000_000) * (float) $rates['image_input']
             + ($outputTokens / 1_000_000) * (float) $rates['image_output'];
+
+        return round(max(0.0, $cost), 6);
+    }
+
+    /**
+     * Conservative pre-call estimate for speech synthesis, derived from the
+     * verified gpt-4o-mini-tts rates (input text tokens $0.60 / output audio
+     * tokens $12.00 per 1M; see .docs/reference/API_RESEARCH.md, verified
+     * 2026-10-28) and the documented-as-estimate constants in config/ai.php.
+     * OpenAI bills text input tokens (documented max 2000 input tokens per
+     * request) and audio output tokens; no tokens-per-second figure is
+     * documented, so the audio output estimate is a deliberate upper bound
+     * for the budget ceiling. The speech response carries no usage payload,
+     * so cost_actual stays null for TTS calls.
+     */
+    private function estimateTts(?string $model, mixed $input): ?float
+    {
+        if (! is_array($input) || ($input['kind'] ?? null) !== 'tts') {
+            return null;
+        }
+
+        $textChars = $input['text_chars'] ?? null;
+
+        if (! is_numeric($textChars) || (int) $textChars < 0) {
+            return null;
+        }
+
+        $rates = config('ai.openai.tts.pricing_per_mtok');
+        $rates = is_array($rates) ? ($rates[(string) $model] ?? null) : null;
+
+        if (! is_array($rates)
+            || ! isset($rates['text_input'], $rates['audio_output'])
+            || ! is_numeric($rates['text_input'])
+            || ! is_numeric($rates['audio_output'])) {
+            return null;
+        }
+
+        $inputTokens = (int) ceil(((int) $textChars) / self::CHARS_PER_TOKEN)
+            + max(0, (int) config('ai.openai.tts.estimate_text_tokens_overhead', 16));
+        $outputTokens = max(1, (int) config('ai.openai.tts.estimate_audio_output_tokens_per_request', 25000));
+
+        $cost = ($inputTokens / 1_000_000) * (float) $rates['text_input']
+            + ($outputTokens / 1_000_000) * (float) $rates['audio_output'];
 
         return round(max(0.0, $cost), 6);
     }

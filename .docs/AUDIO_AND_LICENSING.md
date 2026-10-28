@@ -30,14 +30,18 @@ For every music/SFX asset the system records:
 3. **No arbitrary downloads:** the MVP does not scrape/download music from random websites. Music enters via (a) user upload with licence attestation, or (b) an approved source whose terms were verified and recorded. Sources under evaluation are documented in [reference/API_RESEARCH.md](reference/API_RESEARCH.md).
 4. **AI-music caveat:** if AI music generation is enabled, its terms of service regarding commercial use and copyright must be verified and recorded at selection time (part of decision D-007 scope). Until verified, AI music stays disabled.
 5. **TTS caveat:** AI TTS output may carry provider-specific commercial-use terms (voice licensing, attribution, monetization limits). The chosen TTS provider's terms are verified at selection time and recorded in [reference/API_RESEARCH.md](reference/API_RESEARCH.md); narration/dialogue provenance is stored per asset so terms can be re-audited later.
+   **Verified 2026-10-28 (OpenAI Speech API, D-007 tts portion):** two binding obligations recorded —
+   (a) the provider's usage policies **require a clear disclosure to end users that the TTS voice they hear is AI-generated, not a human voice** — published videos using TTS audio must carry that disclosure (the export/SRT bundle should include a standard AI-voice credit line; enforced at the publishing layer, not in the audio files themselves);
+   (b) the verified Speech-API models are deprecated with shutdown on 2027-01-06 — a future adapter migration (Realtime API) is recorded in DECISIONS.md D-007. Provenance per voice asset: `assets.meta.provenance = "ai_tts"` with provider/model/voice recorded.
 6. **Evidence over assertion:** the UI distinguishes "verified" (evidence recorded) from "declared" (user claims it). Declared-but-unverified assets show a persistent warning; both states are visible in the storyboard and render pre-flight.
 
-## Upload validation (music/SFX/user audio)
+## Upload validation (music/SFX/user audio) — FINAL (Phase 5, 2026-10-28)
 
-- Allowed mime/extensions: audio types only (final allowlist set at implementation; e.g., mp3/wav/m4a/ogg).
-- Size cap (env-configurable placeholder, e.g., `MAX_AUDIO_UPLOAD_MB=20`).
-- Server-side inspection (duration/codec sanity) before the asset is marked `ready`; failures quarantine the asset.
-- Attribution enforcement: if `attribution` is non-empty, the export step appends it to the SRT/description bundle so the user can comply on publishing.
+- Allowed mime/extensions (final allowlist): **mp3** (`audio/mpeg`), **wav** (`audio/wav`), **ogg/opus** (`audio/ogg`), **m4a** (`audio/mp4`), **flac** (`audio/flac`). Validation = extension + MIME allowlist in the Form Request **plus server-side container magic-byte inspection** (`App\AI\Support\AudioMagic`) — client headers alone are never trusted.
+- Size cap: `MAX_AUDIO_UPLOAD_MB` env (default 20; enforced by the Form Request).
+- Server-side inspection (container magic + duration via FFprobe when configured / exact WAV-header fallback) runs **before** the asset is marked `ready`; failures quarantine the asset (`assets.status = failed` + `meta.quarantine_reason` recorded — never silently dropped).
+- Attribution enforcement: if `attribution` is non-empty, the export step appends it to the SRT/description bundle so the user can comply on publishing. Attribution is preserved verbatim in `audio_licences.attribution` and shown on the audio page.
+- Licence verification ("evidence over assertion"): `licence_verified=true` can only be recorded together with (a) non-empty `evidence` entries and (b) `allowed_uses` covering the intended MVP use (`commercial_use`, `monetized_social_media`, `modification` — enforced by `AudioLicenceRequest`). Unverified/missing-use licences are flagged in the UI and **block render pre-flight** (`AudioLicenceGate`, enforced by the Phase 6 renderer).
 
 ## Normalization & mixing
 

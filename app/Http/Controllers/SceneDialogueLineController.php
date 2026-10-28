@@ -55,6 +55,14 @@ class SceneDialogueLineController extends Controller
             'text' => $line->text,
             'sort_order' => $line->sort_order,
             'status' => $line->status->value,
+            'error_message' => $line->error_message,
+            'has_audio' => $line->audio_asset_id !== null,
+            'audio_url' => $line->audio_asset_id !== null
+                ? route('assets.show', ['project' => $line->scene->project_id, 'asset' => $line->audio_asset_id])
+                : null,
+            'audio_duration_ms' => $line->audioAsset?->meta['duration_ms'] ?? null,
+            'audio_exceeds_scene_duration' => $line->audioAsset?->meta['exceeds_scene_duration'] ?? false,
+            'voice_config' => $line->character?->voice_config,
         ];
     }
 }

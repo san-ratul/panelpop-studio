@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Character;
 use App\Models\Project;
+use App\Rules\CharacterVoiceConfig;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,7 +29,7 @@ class CharacterRequest extends FormRequest
             ],
             'description' => ['required', 'string', 'max:5000'],
             'consistency_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
-            'voice_config' => ['sometimes', 'nullable', 'array'],
+            'voice_config' => ['sometimes', 'nullable', 'array', new CharacterVoiceConfig],
         ];
     }
 

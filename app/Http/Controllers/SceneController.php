@@ -137,6 +137,8 @@ class SceneController extends Controller
 
     public static function present(Scene $scene): array
     {
+        $narrationMeta = $scene->narrationAudioAsset?->meta ?? [];
+
         return [
             'id' => $scene->id,
             'number' => $scene->number,
@@ -151,6 +153,12 @@ class SceneController extends Controller
             'image_url' => $scene->image_asset_id !== null
                 ? route('assets.show', ['project' => $scene->project_id, 'asset' => $scene->image_asset_id])
                 : null,
+            'has_narration_audio' => $scene->narration_audio_asset_id !== null,
+            'narration_audio_url' => $scene->narration_audio_asset_id !== null
+                ? route('assets.show', ['project' => $scene->project_id, 'asset' => $scene->narration_audio_asset_id])
+                : null,
+            'narration_duration_ms' => is_array($narrationMeta) ? ($narrationMeta['duration_ms'] ?? null) : null,
+            'narration_exceeds_scene_duration' => is_array($narrationMeta) ? ($narrationMeta['exceeds_scene_duration'] ?? false) : false,
             'dialogue_lines' => $scene->dialogueLines->map(
                 static fn (DialogueLine $line): array => SceneDialogueLineController::present($line)
             )->values()->all(),
