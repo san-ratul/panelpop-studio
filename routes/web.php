@@ -42,6 +42,7 @@ Route::middleware('auth')->scopeBindings()->group(function () {
 
     Route::get('/projects/{project}/story/edit', [StoryController::class, 'edit'])->name('story.edit');
     Route::put('/projects/{project}/story', [StoryController::class, 'save'])->name('story.save');
+    Route::post('/projects/{project}/story/generate', [StoryController::class, 'generate'])->name('story.generate');
 
     Route::get('/projects/{project}/characters', [CharacterController::class, 'index'])->name('characters.index');
     Route::post('/projects/{project}/characters', [CharacterController::class, 'store'])->name('characters.store');
@@ -51,6 +52,7 @@ Route::middleware('auth')->scopeBindings()->group(function () {
 
     Route::get('/projects/{project}/storyboard', [StoryboardController::class, 'show'])->name('storyboard.show');
     Route::post('/projects/{project}/storyboard/complete', [StoryboardController::class, 'complete'])->name('storyboard.complete');
+    Route::post('/projects/{project}/storyboard/generate-plan', [StoryboardController::class, 'generatePlan'])->name('storyboard.generate-plan');
 
     Route::post('/projects/{project}/scenes', [SceneController::class, 'store'])->name('scenes.store');
     Route::post('/projects/{project}/scenes/reorder', [SceneController::class, 'reorder'])->name('scenes.reorder');

@@ -5,6 +5,8 @@ use App\AI\Fakes\FakeImageProvider;
 use App\AI\Fakes\FakeMusicProvider;
 use App\AI\Fakes\FakeTextProvider;
 use App\AI\Fakes\FakeTtsProvider;
+use App\AI\Providers\OpenAI\OpenAICostEstimator;
+use App\AI\Providers\OpenAI\OpenAITextProvider;
 
 $budgetCeiling = env('DAILY_PROVIDER_BUDGET_USD');
 
@@ -37,7 +39,8 @@ return [
     'env' => [
         'text' => [
             'provider' => env('TEXT_PROVIDER'),
-            'model' => env('TEXT_MODEL'),
+            // Verified default model (D-007, 2026-10-28): gpt-6.1-terra.
+            'model' => env('TEXT_MODEL', 'gpt-6.1-terra'),
             'api_key' => env('TEXT_API_KEY'),
         ],
         'image' => [
@@ -58,6 +61,13 @@ return [
     ],
 
     'providers' => [
+        'openai' => [
+            'label' => 'OpenAI',
+            'capabilities' => ['text'],
+            'adapters' => [
+                'text' => OpenAITextProvider::class,
+            ],
+        ],
         'fake' => [
             'label' => 'Deterministic fake (testing only)',
             'test_only' => true,
@@ -72,7 +82,34 @@ return [
     ],
 
     'estimators' => [
+        'openai' => OpenAICostEstimator::class,
         'fake' => FakeCostEstimator::class,
+    ],
+
+    // OpenAI Responses API settings (D-007, verified 2026-10-28 — see
+    // .docs/reference/API_RESEARCH.md for sources, pricing and dates).
+    'openai' => [
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+
+        // Data minimization: do not retain generated story content on OpenAI
+        // infrastructure (the API default is true when omitted).
+        'store' => filter_var(env('OPENAI_STORE_RESPONSES', false), FILTER_VALIDATE_BOOLEAN),
+
+        'text' => [
+            // gpt-6.1-terra supports effort "none" (no billed reasoning tokens).
+            'reasoning_effort' => env('OPENAI_TEXT_REASONING_EFFORT', 'none'),
+            'max_output_tokens_story' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_STORY', 4000)),
+            'max_output_tokens_plan' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_PLAN', 6000)),
+        ],
+
+        // Verified list pricing, USD per 1M tokens (2026-10-28):
+        // https://platform.openai.com/docs/models/gpt-6.1-terra et al.
+        'pricing_per_mtok' => [
+            'gpt-6.1-terra' => ['input' => 1.00, 'output' => 5.00],
+            'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50],
+            'gpt-6.1-sol' => ['input' => 2.00, 'output' => 10.00],
+            'gpt-6-astra' => ['input' => 10.00, 'output' => 50.00],
+        ],
     ],
 
 ];

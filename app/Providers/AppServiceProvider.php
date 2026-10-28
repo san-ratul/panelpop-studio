@@ -29,7 +29,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(ProviderSettingsService::class);
 
         $this->app->bind(LoggerInterface::class, function (): LoggerInterface {
-            return log()->channel(config('ai.log_channel') ?? config('logging.default'));
+            return logger()->channel(config('ai.log_channel') ?? config('logging.default'));
         });
 
         if ($this->app->environment('testing')) {

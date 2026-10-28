@@ -2,6 +2,7 @@
 
 namespace App\AI;
 
+use App\AI\Contracts\ConfigurableProvider;
 use App\AI\Contracts\ImageProvider;
 use App\AI\Contracts\MusicProvider;
 use App\AI\Contracts\TextProvider;
@@ -152,7 +153,7 @@ final class ProviderManager
             throw new ProviderConfigurationException($this->missingCredentialMessage($slug, $capability));
         }
 
-        return new ResolvedProvider(
+        $resolved = new ResolvedProvider(
             capability: $capability,
             provider: $slug,
             source: $source,
@@ -163,6 +164,12 @@ final class ProviderManager
             settings: $settings,
             estimator: $this->estimatorFor($slug),
         );
+
+        if ($adapter instanceof ConfigurableProvider) {
+            $adapter->configure($resolved);
+        }
+
+        return $resolved;
     }
 
     private function modelFor(?ProviderSettings $settings, ProviderCapability $capability): ?string

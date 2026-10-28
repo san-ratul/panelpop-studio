@@ -1,6 +1,6 @@
 <script setup>
-import { Link, useForm, usePage } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Link, router, useForm } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AddDialogueLine from '@/Components/AddDialogueLine.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
@@ -29,6 +29,18 @@ const props = defineProps({
         type: Number,
         default: 2,
     },
+    planJobs: {
+        type: Array,
+        default: () => [],
+    },
+    planJobActive: {
+        type: Boolean,
+        default: false,
+    },
+    hasReadyStory: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const editingSceneId = ref(null);
@@ -47,9 +59,11 @@ const editSceneForm = useForm({
     narration_text: '',
 });
 
-const completeErrors = computed(() => usePage().props.errors ?? {});
 const completeForm = useForm({});
 const reorderForm = useForm({});
+const planForm = useForm({});
+
+const latestPlanJob = computed(() => props.planJobs[0] ?? null);
 
 function submitAddScene() {
     addSceneForm.post(route('scenes.store', props.project.id), {
@@ -99,6 +113,48 @@ function moveScene(scene, direction) {
 function completeStoryboard() {
     completeForm.post(route('storyboard.complete', props.project.id));
 }
+
+function generatePlan() {
+    planForm.post(route('storyboard.generate-plan', props.project.id), {
+        onSuccess: () => startPolling(),
+    });
+}
+
+const pollTimer = ref(null);
+
+function startPolling() {
+    if (pollTimer.value !== null) {
+        return;
+    }
+
+    pollTimer.value = setInterval(() => {
+        router.reload({
+            only: ['planJobs', 'planJobActive', 'scenes', 'characters', 'durationTotal'],
+        });
+    }, 3000);
+}
+
+function stopPolling() {
+    if (pollTimer.value !== null) {
+        clearInterval(pollTimer.value);
+        pollTimer.value = null;
+    }
+}
+
+watch(
+    () => props.planJobActive,
+    (active) => {
+        if (!active) {
+            stopPolling();
+        }
+    },
+);
+
+onBeforeUnmount(stopPolling);
+
+if (props.planJobActive) {
+    startPolling();
+}
 </script>
 
 <template>
@@ -120,6 +176,15 @@ function completeStoryboard() {
                 </Link>
                 <button
                     type="button"
+                    :disabled="planForm.processing || planJobActive || !hasReadyStory"
+                    :title="hasReadyStory ? '' : 'Generate or save a ready story first'"
+                    class="rounded-md border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                    @click="generatePlan"
+                >
+                    {{ planJobActive ? 'Planning…' : 'Generate scene plan with AI' }}
+                </button>
+                <button
+                    type="button"
                     :disabled="completeForm.processing"
                     class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                     @click="completeStoryboard"
@@ -130,10 +195,56 @@ function completeStoryboard() {
         </div>
 
         <p
-            v-if="completeErrors.duration_sum"
+            v-if="planForm.errors.plan"
             class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-            {{ completeErrors.duration_sum }}
+            {{ planForm.errors.plan }}
+        </p>
+
+        <div
+            v-for="job in planJobs"
+            :key="job.id"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-medium capitalize">
+                    AI scene plan #{{ job.id }} — {{ job.status.replaceAll('_', ' ') }}
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
+            </p>
+            <p
+                v-else-if="job.status === 'succeeded' && job.result"
+                class="mt-1"
+            >
+                Planned {{ job.result.scenes }} scenes ({{ job.result.characters }} characters), total
+                {{ job.result.duration_total }} s — edit anything below, then complete the storyboard.
+            </p>
+            <p
+                v-if="job.status === 'succeeded' && job.result?.duration_warning"
+                class="mt-1 text-amber-700"
+            >
+                {{ job.result.duration_warning }}
+            </p>
+        </div>
+
+        <p
+            v-if="completeForm.errors.duration_sum"
+            class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+            {{ completeForm.errors.duration_sum }}
         </p>
 
         <div class="mt-6 space-y-4">

@@ -49,6 +49,9 @@ class ScenePlanValidator
             'scenes.*.background_description' => ['required', 'string', 'max:2000'],
             'scenes.*.image_prompt' => ['required', 'string', 'max:4000'],
             'scenes.*.narration_text' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'scenes.*.dialogue' => ['sometimes', 'array', 'max:50'],
+            'scenes.*.dialogue.*.character_name' => ['required', 'string', 'max:120'],
+            'scenes.*.dialogue.*.text' => ['required', 'string', 'max:5000'],
             'scenes.*.speech_bubble_settings' => ['sometimes', 'nullable', new SpeechBubbleSettings],
         ];
     }

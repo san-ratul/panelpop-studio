@@ -15,6 +15,13 @@ final class SecretRedactor
     private const BEARER_PATTERN = '/(bearer\s+)([^\s"\',.;:]+)/i';
 
     /**
+     * Common API-key shapes (e.g. OpenAI "sk-…", "sk-proj-…", "rk-…"). Provider
+     * error messages sometimes echo the key verbatim ("Incorrect API key
+     * provided: sk-…"), which label-based redaction alone does not catch.
+     */
+    private const KEY_SHAPE_PATTERN = '/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{10,}\b/';
+
+    /**
      * @param  array<string, mixed>  $headers
      * @return array<string, mixed>
      */
@@ -51,8 +58,12 @@ final class SecretRedactor
     {
         $redacted = preg_replace(self::MESSAGE_SECRET_PATTERN, '$1'.self::MASK.']', $message) ?? $message;
 
-        return preg_replace_callback(self::BEARER_PATTERN, function (array $matches): string {
+        $redacted = preg_replace_callback(self::BEARER_PATTERN, function (array $matches): string {
             return $matches[1].self::MASK.':***'.self::last4($matches[2]).']';
+        }, $redacted) ?? $redacted;
+
+        return preg_replace_callback(self::KEY_SHAPE_PATTERN, function (array $matches): string {
+            return self::MASK.':***'.self::last4($matches[0]).']';
         }, $redacted) ?? $redacted;
     }
 

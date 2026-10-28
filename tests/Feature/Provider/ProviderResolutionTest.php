@@ -289,7 +289,13 @@ class ProviderResolutionTest extends TestCase
         $this->assertArrayNotHasKey('fake', $registry->providers('production'));
         $this->assertNull($registry->definition('fake', 'production'));
         $this->assertNull($registry->adapterClass('fake', ProviderCapability::Text, 'production'));
-        $this->assertSame([], $registry->providersForCapability(ProviderCapability::Text, 'production'));
+
+        // D-007 (Phase 3): the verified OpenAI text adapter is registered for
+        // real environments; the fake never is.
+        $this->assertSame(
+            ['openai'],
+            $registry->providersForCapability(ProviderCapability::Text, 'production'),
+        );
     }
 
     public function test_owned_defaults_are_ignored_for_system_resolution(): void

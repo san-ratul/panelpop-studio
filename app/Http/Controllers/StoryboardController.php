@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\GenerationJobType;
 use App\Enums\ProjectStatus;
+use App\Enums\StoryStatus;
 use App\Exceptions\DomainValidationException;
+use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Models\Project;
 use App\Services\DurationValidator;
+use App\Services\GenerationJobGuard;
 use App\Services\ScenePlanValidator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
@@ -17,6 +21,7 @@ class StoryboardController extends Controller
     public function __construct(
         private readonly DurationValidator $durationValidator,
         private readonly ScenePlanValidator $scenePlanValidator,
+        private readonly GenerationJobGuard $jobGuard,
     ) {}
 
     public function show(Project $project): Response
@@ -27,6 +32,8 @@ class StoryboardController extends Controller
             ->map(static fn ($scene) => SceneController::present($scene))
             ->values()
             ->all();
+
+        $planJobs = GenerationJobPresenter::recent($project, GenerationJobType::ScenePlanning);
 
         return Inertia::render('Storyboard/Show', [
             'project' => ProjectController::present($project),
@@ -40,6 +47,9 @@ class StoryboardController extends Controller
                 $scenes
             )),
             'toleranceSeconds' => DurationValidator::TOLERANCE_SECONDS,
+            'planJobs' => $planJobs,
+            'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
+            'hasReadyStory' => ($project->story?->status ?? null) === StoryStatus::Ready,
         ]);
     }
 
@@ -89,5 +99,34 @@ class StoryboardController extends Controller
 
         return redirect()->route('storyboard.show', $project)
             ->with('success', 'Storyboard completed — scene plan locked.');
+    }
+
+    public function generatePlan(Project $project): RedirectResponse
+    {
+        $this->authorize('update', $project);
+
+        if (($project->story?->status ?? null) !== StoryStatus::Ready) {
+            throw ValidationException::withMessages([
+                'plan' => 'Scene planning needs a ready story. Generate or save a story first.',
+            ]);
+        }
+
+        $this->jobGuard->cancelStale($project, GenerationJobType::ScenePlanning);
+
+        $active = $this->jobGuard->activeJob($project, GenerationJobType::ScenePlanning);
+
+        if ($active !== null) {
+            throw ValidationException::withMessages([
+                'plan' => sprintf(
+                    'Scene planning is already %s for this project. Wait for it to finish.',
+                    $active->status->value,
+                ),
+            ]);
+        }
+
+        $this->jobGuard->launch($project, GenerationJobType::ScenePlanning, []);
+
+        return redirect()->route('storyboard.show', $project)
+            ->with('success', 'Scene planning queued.');
     }
 }
