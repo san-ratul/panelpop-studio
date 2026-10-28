@@ -49,6 +49,10 @@ class HandleInertiaRequests extends Middleware
             // renders them as banners.
             'flashSuccess' => fn (): mixed => $request->session()->get('success'),
             'flashWarning' => fn (): mixed => $request->session()->get('warning'),
+            // Generated-but-not-yet-saved video metadata (Render/Show.vue
+            // hydrates its editable form from this after the generate
+            // redirect); consumed with the same one-request flash lifetime.
+            'generatedMetadata' => fn (): mixed => $request->session()->get('generated_metadata'),
         ];
     }
 

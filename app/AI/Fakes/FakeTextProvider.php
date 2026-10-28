@@ -5,10 +5,12 @@ namespace App\AI\Fakes;
 use App\AI\Contracts\TextProvider;
 use App\AI\Inputs\ScenePlanConstraints;
 use App\AI\Inputs\StoryBrief;
+use App\AI\Inputs\VideoMetadataBrief;
 use App\AI\Results\PlannedScene;
 use App\AI\Results\ProviderUsage;
 use App\AI\Results\ScenePlan;
 use App\AI\Results\StoryDraft;
+use App\AI\Results\VideoMetadata;
 use App\Enums\ProviderCapability;
 
 final class FakeTextProvider implements TextProvider
@@ -28,6 +30,20 @@ final class FakeTextProvider implements TextProvider
             usage: new ProviderUsage(inputTokens: 42, outputTokens: 1337),
             costActual: 0.001234,
             meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-story-1'],
+        );
+    }
+
+    public function generateVideoMetadata(VideoMetadataBrief $brief): VideoMetadata
+    {
+        $this->scenario->throwIfFailure(ProviderCapability::Text);
+
+        return new VideoMetadata(
+            title: 'The Night the Painted Panels Came Alive',
+            description: 'A small robot paints cartoon panels every night — until one morning the panels come to life and thank him. A warm cartoon short about patient, repeated work. '
+                .'Deterministic fake metadata for testing.',
+            usage: new ProviderUsage(inputTokens: 210, outputTokens: 96),
+            costActual: 0.000421,
+            meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-metadata-1'],
         );
     }
 

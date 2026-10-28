@@ -40,6 +40,28 @@ final class OpenAISchemas
     /**
      * @return array<string, mixed>
      */
+    public static function videoMetadata(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'title' => [
+                    'type' => 'string',
+                    'description' => 'Video title for the selected platform(s), at most 100 characters, plain text without Markdown or JSON.',
+                ],
+                'description' => [
+                    'type' => 'string',
+                    'description' => 'Video description faithfully summarizing the story for the selected platform(s), at most 2200 characters, plain text without Markdown fences or JSON.',
+                ],
+            ],
+            'required' => ['title', 'description'],
+            'additionalProperties' => false,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public static function scenePlan(): array
     {
         return [

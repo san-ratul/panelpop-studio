@@ -104,6 +104,7 @@ return [
             'reasoning_effort' => env('OPENAI_TEXT_REASONING_EFFORT', 'none'),
             'max_output_tokens_story' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_STORY', 4000)),
             'max_output_tokens_plan' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_PLAN', 6000)),
+            'max_output_tokens_metadata' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_METADATA', 1000)),
         ],
 
         // Verified list pricing, USD per 1M tokens (2026-10-28):

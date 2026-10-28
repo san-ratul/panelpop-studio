@@ -67,4 +67,13 @@ The pipeline is implemented exactly as specified above. Concrete details for ope
 
 MP4 / H.264 yuv420p / AAC (iff audio enabled) / 1080×1920 / 30 fps / 30–90 s / `+faststart` / no black first frame (validated via extracted first-frame check during gate) / normalized loudness when audio present.
 
+## Video metadata (added 2026-10-28)
+
+For a completed render, the render page offers **Video Metadata**: an AI-generated video title + description for YouTube Shorts / Facebook Reels (or both). Flow and guarantees:
+
+- Generation goes through the standard text-provider pipeline (`VideoMetadataService` → `ProviderManager` → `ProviderGateway` → `TextProvider::generateVideoMetadata`, OpenAI Responses API with strict structured output `video_metadata`) and is grounded in the project's own story, logline, narration/dialogue excerpt, storyboard facts (scene count, mode, style, language, characters) and target duration. The prompt forbids invented plot details, clickbait, keyword stuffing and Markdown/JSON in the output.
+- Generated values are flashed back to the render page for review (`generatedMetadata` shared prop); **generation never persists**. Only the explicit Save action writes `video_metadata` (1:1 with `project_id`: `platform`, `title` ≤100, `description` ≤2200, `generation_meta`). Saved values prefill the page on reopen; a second save is an explicit overwrite.
+- Provider failures surface as a form validation error on the Generate button; the completed video, its downloads and any previously saved metadata are never touched. Metadata is not part of the render pre-flight or the render pipeline.
+- Authorization: read via the render page (`project.view`), generate/save via `project.update` — metadata can never be read or modified by another user.
+
 Related: provider-generated visual strategy [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md); asset storage rules [SECURITY.md](SECURITY.md); test approach for command construction [TESTING_STRATEGY.md](TESTING_STRATEGY.md).

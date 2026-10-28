@@ -48,6 +48,11 @@ class Project extends Model
         return $this->hasOne(Story::class);
     }
 
+    public function videoMetadata(): HasOne
+    {
+        return $this->hasOne(VideoMetadata::class);
+    }
+
     public function characters(): HasMany
     {
         return $this->hasMany(Character::class);

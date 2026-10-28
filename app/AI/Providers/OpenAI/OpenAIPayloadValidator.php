@@ -29,6 +29,10 @@ final class OpenAIPayloadValidator
 
     private const MAX_DESCRIPTION = 2000;
 
+    private const MAX_METADATA_TITLE = 100;
+
+    private const MAX_METADATA_DESCRIPTION = 2200;
+
     private const MAX_SCENES = 100;
 
     private const MAX_CHARACTERS = 50;
@@ -52,6 +56,26 @@ final class OpenAIPayloadValidator
         }
 
         return ['title' => $title, 'logline' => $logline, 'full_text' => $fullText];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{title: string, description: string}
+     */
+    public static function videoMetadata(array $payload): array
+    {
+        $title = self::stringField($payload, 'title', self::MAX_METADATA_TITLE);
+        $description = self::stringField($payload, 'description', self::MAX_METADATA_DESCRIPTION);
+
+        if ($title === '') {
+            throw self::invalid('the video metadata "title" is empty');
+        }
+
+        if ($description === '') {
+            throw self::invalid('the video metadata "description" is empty');
+        }
+
+        return ['title' => $title, 'description' => $description];
     }
 
     /**

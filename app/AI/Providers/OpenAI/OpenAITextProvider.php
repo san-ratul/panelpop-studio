@@ -10,13 +10,16 @@ use App\AI\Exceptions\ProviderRequestException;
 use App\AI\Http\ProviderHttpClient;
 use App\AI\Inputs\ScenePlanConstraints;
 use App\AI\Inputs\StoryBrief;
+use App\AI\Inputs\VideoMetadataBrief;
 use App\AI\Prompts\StoryPromptBuilder;
+use App\AI\Prompts\VideoMetadataPromptBuilder;
 use App\AI\ResolvedProvider;
 use App\AI\Results\PlannedDialogueLine;
 use App\AI\Results\PlannedScene;
 use App\AI\Results\ProviderUsage;
 use App\AI\Results\ScenePlan;
 use App\AI\Results\StoryDraft;
+use App\AI\Results\VideoMetadata;
 use App\AI\Support\ProviderHttpError;
 use App\AI\Support\SecretRedactor;
 use Illuminate\Http\Client\ConnectionException;
@@ -39,10 +42,13 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
 
     private const FORMAT_NAME_PLAN = 'cartoon_scene_plan';
 
+    private const FORMAT_NAME_METADATA = 'video_metadata';
+
     private ?ResolvedProvider $resolved = null;
 
     public function __construct(
         private readonly StoryPromptBuilder $prompts,
+        private readonly VideoMetadataPromptBuilder $metadataPrompts,
         private readonly ProviderHttpClient $client,
     ) {}
 
@@ -119,6 +125,31 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
             usage: $this->usageFrom($response),
             costActual: null,
             meta: $meta,
+        );
+    }
+
+    public function generateVideoMetadata(VideoMetadataBrief $brief): VideoMetadata
+    {
+        $messages = $this->metadataPrompts->metadataMessages($brief);
+
+        $body = $this->requestBody(
+            $messages,
+            OpenAISchemas::videoMetadata(),
+            self::FORMAT_NAME_METADATA,
+            $this->option('max_output_tokens_metadata'),
+        );
+
+        $response = $this->send($body);
+
+        $payload = $this->decodeStructured($this->outputText($response));
+        $metadata = OpenAIPayloadValidator::videoMetadata($payload);
+
+        return new VideoMetadata(
+            title: $metadata['title'],
+            description: $metadata['description'],
+            usage: $this->usageFrom($response),
+            costActual: null,
+            meta: $this->meta($response, 'video_metadata'),
         );
     }
 

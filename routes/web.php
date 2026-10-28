@@ -80,6 +80,8 @@ Route::middleware('auth')->scopeBindings()->group(function () {
 
     Route::get('/projects/{project}/render', [ProjectRenderController::class, 'show'])->name('render.show');
     Route::post('/projects/{project}/render', [ProjectRenderController::class, 'store'])->name('render.store');
+    Route::post('/projects/{project}/render/metadata/generate', [ProjectRenderController::class, 'generateMetadata'])->name('render.metadata.generate');
+    Route::patch('/projects/{project}/render/metadata', [ProjectRenderController::class, 'saveMetadata'])->name('render.metadata.update');
 
     Route::get('/projects/{project}/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
 

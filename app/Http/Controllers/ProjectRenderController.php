@@ -2,20 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Exceptions\ProviderException;
 use App\Enums\AssetType;
 use App\Enums\GenerationJobType;
 use App\Enums\PresentationMode;
 use App\Enums\ProjectStatus;
+use App\Enums\VideoMetadataPlatform;
 use App\Http\Controllers\Support\GenerationJobPresenter;
+use App\Http\Requests\GenerateVideoMetadataRequest;
+use App\Http\Requests\SaveVideoMetadataRequest;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Services\AudioLicenceGate;
 use App\Services\GenerationJobGuard;
 use App\Services\Render\BinaryProbe;
+use App\Services\VideoMetadataService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 /**
  * Phase 6 render workflow: initiate rendering, monitor status, retry, and
@@ -23,6 +30,11 @@ use Inertia\Response;
  * policy-checked assets.show route — private paths are never exposed).
  * Pre-flight itself runs inside the queued job; this layer only guards
  * obvious duplicate launches and machine configuration.
+ *
+ * Video metadata (title/description for YouTube Shorts / Facebook Reels) is
+ * generated synchronously through the standard provider pipeline and only
+ * persisted via the explicit save action; provider failures here never
+ * affect the completed render or its downloads.
  */
 class ProjectRenderController extends Controller
 {
@@ -30,6 +42,7 @@ class ProjectRenderController extends Controller
         private readonly GenerationJobGuard $jobGuard,
         private readonly BinaryProbe $binaryProbe,
         private readonly AudioLicenceGate $licenceGate,
+        private readonly VideoMetadataService $metadataService,
     ) {}
 
     public function show(Project $project): Response
@@ -57,6 +70,12 @@ class ProjectRenderController extends Controller
             'silentMode' => in_array($project->presentation_mode, [PresentationMode::Silent, PresentationMode::SpeechBubbles], true),
             'ffmpegConfigured' => $this->binaryProbe->configured(),
             'canRender' => $this->canRender($project),
+            'videoMetadata' => $project->videoMetadata ? [
+                'platform' => $project->videoMetadata->platform->value,
+                'title' => $project->videoMetadata->title,
+                'description' => $project->videoMetadata->description,
+                'generation_meta' => $project->videoMetadata->generation_meta,
+            ] : null,
         ]);
     }
 
@@ -95,6 +114,65 @@ class ProjectRenderController extends Controller
 
         return redirect()->route('render.show', $project)
             ->with('success', 'Render queued.');
+    }
+
+    /**
+     * Generates (but does not persist) a title/description for the selected
+     * platform from the project's story, storyboard and render facts. The
+     * generated values are flashed to the render page so the user can review
+     * and edit them before the explicit save.
+     */
+    public function generateMetadata(GenerateVideoMetadataRequest $request, Project $project): RedirectResponse
+    {
+        $this->authorize('update', $project);
+
+        $platform = $request->validated('platform');
+
+        try {
+            $metadata = $this->metadataService->generate($project, $platform);
+        } catch (ProviderException $exception) {
+            throw ValidationException::withMessages([
+                'metadata' => sprintf('Metadata generation failed: %s', $exception->getMessage()),
+            ]);
+        } catch (Throwable $exception) {
+            Log::error('Video metadata generation failed unexpectedly.', [
+                'project_id' => $project->id,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            throw ValidationException::withMessages([
+                'metadata' => 'Metadata generation failed unexpectedly. Check the application logs and try again.',
+            ]);
+        }
+
+        return redirect()->route('render.show', $project)
+            ->with('generated_metadata', [
+                'platform' => $platform,
+                'title' => $metadata->title,
+                'description' => $metadata->description,
+            ])
+            ->with('success', 'Metadata generated. Review, edit if needed, then save.');
+    }
+
+    /**
+     * Persists user-reviewed metadata (an explicit overwrite — generation
+     * never writes to the database).
+     */
+    public function saveMetadata(SaveVideoMetadataRequest $request, Project $project): RedirectResponse
+    {
+        $this->authorize('update', $project);
+
+        $data = $request->validated();
+
+        $metadata = $project->videoMetadata()->firstOrNew(['project_id' => $project->id]);
+        $metadata->platform = VideoMetadataPlatform::from($data['platform']);
+        $metadata->title = $data['title'];
+        $metadata->description = $data['description'];
+        $metadata->save();
+
+        return redirect()->route('render.show', $project)
+            ->with('success', 'Video metadata saved.');
     }
 
     private function canRender(Project $project): bool

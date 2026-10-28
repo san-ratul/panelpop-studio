@@ -20,6 +20,8 @@ final class OpenAICostEstimator implements CostEstimator
 
     private const PLAN_PROMPT_OVERHEAD_TOKENS = 2500;
 
+    private const METADATA_PROMPT_OVERHEAD_TOKENS = 1200;
+
     /** ~4 characters per token for English prose (documented approximation). */
     private const CHARS_PER_TOKEN = 4;
 
@@ -185,6 +187,16 @@ final class OpenAICostEstimator implements CostEstimator
         if ($kind === 'plan' && is_string($input['story_chars'] ?? null) && ctype_digit($input['story_chars'])) {
             $inputTokens = (int) ceil(((int) $input['story_chars']) / self::CHARS_PER_TOKEN) + self::PLAN_PROMPT_OVERHEAD_TOKENS;
             $outputTokens = (int) config('ai.openai.text.max_output_tokens_plan', 4096);
+
+            return [$inputTokens, max(1, $outputTokens)];
+        }
+
+        if ($kind === 'video_metadata'
+            && is_string($input['story_chars'] ?? null) && ctype_digit($input['story_chars'])
+            && is_string($input['title_chars'] ?? null) && ctype_digit($input['title_chars'])) {
+            $inputChars = ((int) $input['story_chars']) + ((int) $input['title_chars']);
+            $inputTokens = (int) ceil($inputChars / self::CHARS_PER_TOKEN) + self::METADATA_PROMPT_OVERHEAD_TOKENS;
+            $outputTokens = (int) config('ai.openai.text.max_output_tokens_metadata', 1000);
 
             return [$inputTokens, max(1, $outputTokens)];
         }
