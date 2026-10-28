@@ -124,9 +124,11 @@ function moveScene(scene, direction) {
         return;
     }
     [ids[index], ids[target]] = [ids[target], ids[index]];
-    reorderForm.post(route('scenes.reorder', props.project.id), {
-        data: { scene_ids: ids },
-    });
+    // useForm ignores the visit "data" option — serialize via transform
+    // (the empty form would otherwise post without scene_ids).
+    reorderForm
+        .transform(() => ({ scene_ids: ids }))
+        .post(route('scenes.reorder', props.project.id));
 }
 
 function completeStoryboard() {

@@ -213,19 +213,24 @@ function startEditLicence(asset) {
 }
 
 function saveLicence(asset) {
-    licenceForm.patch(route('audio-assets.update-licence', [props.project.id, asset.id]), {
-        data: {
-            ...licenceForm.data(),
-            evidence: licenceForm.evidence
+    // useForm ignores the visit "data" option — the payload is always
+    // transform(form.data()). Serializing here (regression: the evidence
+    // array passed via `data` was silently dropped, so the raw textarea
+    // string was sent and verification was rejected as evidence-less).
+    licenceForm
+        .transform((data) => ({
+            ...data,
+            evidence: data.evidence
                 .split('\n')
                 .map((entry) => entry.trim())
                 .filter(Boolean),
-            licence_verified: licenceForm.licence_verified ? 1 : 0,
-        },
-        onSuccess: () => {
-            editingLicenceId.value = null;
-        },
-    });
+            licence_verified: data.licence_verified ? 1 : 0,
+        }))
+        .patch(route('audio-assets.update-licence', [props.project.id, asset.id]), {
+            onSuccess: () => {
+                editingLicenceId.value = null;
+            },
+        });
 }
 
 function destroyAsset(asset) {

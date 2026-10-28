@@ -13,6 +13,7 @@ use App\Services\AudioLicenceGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
 
 /**
@@ -159,6 +160,44 @@ class AudioLicenceTest extends TestCase
         $this->assertSame([], $gate->blockMessages($this->project));
     }
 
+    public function test_verified_licence_with_evidence_entries_persists_and_reads_back(): void
+    {
+        $this->post(
+            route('audio.upload', $this->project),
+            [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
+        )->assertRedirect();
+
+        $asset = Asset::query()->sole();
+
+        $evidence = [
+            'Licence page quote: "Commercial use permitted, including monetized social media."',
+            'https://example.com/licence#terms',
+        ];
+
+        $this->patch(
+            route('audio-assets.update-licence', [$this->project, $asset]),
+            [...$this->uploadPayload(), 'evidence' => $evidence, 'licence_verified' => '1'],
+        )->assertRedirect();
+
+        $licence = $asset->audioLicence()->first();
+
+        $this->assertTrue((bool) $licence->licence_verified);
+        $this->assertNotNull($licence->verified_at);
+        $this->assertSame($evidence, $licence->evidence);
+
+        // Read-back through the audio workspace payload (Inertia props).
+        $this->get(route('audio.show', $this->project))
+            ->assertOk()
+            ->assertInertia(
+                fn (InertiaAssert $page) => $page
+                    ->component('Audio/Show')
+                    ->where('musicAssets.0.licence.licence_verified', true)
+                    ->where('musicAssets.0.licence.evidence.0', $evidence[0])
+                    ->where('musicAssets.0.licence.evidence.1', $evidence[1])
+                    ->where('blockedAssets', []),
+            );
+    }
+
     public function test_verification_without_evidence_is_rejected(): void
     {
         $this->post(
@@ -171,6 +210,51 @@ class AudioLicenceTest extends TestCase
         $this->patch(
             route('audio-assets.update-licence', [$this->project, $asset]),
             [...$this->uploadPayload(), 'evidence' => [], 'licence_verified' => '1'],
+        )->assertSessionHasErrors('licence_verified');
+
+        $asset->refresh();
+
+        $this->assertFalse((bool) $asset->audioLicence->licence_verified);
+    }
+
+    public function test_string_evidence_payload_is_rejected(): void
+    {
+        // Regression shape: a client serializing the evidence textarea as a
+        // single newline-separated string (the UI bug fixed alongside this
+        // test) must not pass validation — evidence is an array of entries.
+        $this->post(
+            route('audio.upload', $this->project),
+            [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
+        )->assertRedirect();
+
+        $asset = Asset::query()->sole();
+
+        $this->patch(
+            route('audio-assets.update-licence', [$this->project, $asset]),
+            [
+                ...$this->uploadPayload(),
+                'evidence' => "Quote: \"Commercial use permitted.\"\nhttps://example.com/licence",
+                'licence_verified' => '1',
+            ],
+        )->assertSessionHasErrors(['evidence', 'licence_verified']);
+
+        $asset->refresh();
+
+        $this->assertFalse((bool) $asset->audioLicence->licence_verified);
+    }
+
+    public function test_whitespace_only_evidence_entries_do_not_satisfy_verification(): void
+    {
+        $this->post(
+            route('audio.upload', $this->project),
+            [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
+        )->assertRedirect();
+
+        $asset = Asset::query()->sole();
+
+        $this->patch(
+            route('audio-assets.update-licence', [$this->project, $asset]),
+            [...$this->uploadPayload(), 'evidence' => ['   ', ''], 'licence_verified' => '1'],
         )->assertSessionHasErrors('licence_verified');
 
         $asset->refresh();
