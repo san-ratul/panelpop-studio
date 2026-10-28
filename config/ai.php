@@ -6,6 +6,7 @@ use App\AI\Fakes\FakeMusicProvider;
 use App\AI\Fakes\FakeTextProvider;
 use App\AI\Fakes\FakeTtsProvider;
 use App\AI\Providers\OpenAI\OpenAICostEstimator;
+use App\AI\Providers\OpenAI\OpenAIImageProvider;
 use App\AI\Providers\OpenAI\OpenAITextProvider;
 
 $budgetCeiling = env('DAILY_PROVIDER_BUDGET_USD');
@@ -63,9 +64,10 @@ return [
     'providers' => [
         'openai' => [
             'label' => 'OpenAI',
-            'capabilities' => ['text'],
+            'capabilities' => ['text', 'image'],
             'adapters' => [
                 'text' => OpenAITextProvider::class,
+                'image' => OpenAIImageProvider::class,
             ],
         ],
         'fake' => [
@@ -109,6 +111,35 @@ return [
             'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50],
             'gpt-6.1-sol' => ['input' => 2.00, 'output' => 10.00],
             'gpt-6-astra' => ['input' => 10.00, 'output' => 50.00],
+        ],
+
+        // Image API settings (D-007 image portion, verified 2026-10-28 — see
+        // .docs/reference/API_RESEARCH.md for sources, pricing and dates).
+        // The Images API is used with the documented default model; a dated
+        // snapshot (e.g. gpt-image-2.5-flare-2026-09-08) may be pinned via
+        // IMAGE_MODEL or the provider setting's config.model.
+        'image' => [
+            // Character reference sheets are square; scene images use the
+            // documented portrait size (closest supported to the 9:16 target;
+            // exact 9:16 composition guidance lives in the prompt itself).
+            'size_character' => env('OPENAI_IMAGE_SIZE_CHARACTER', '1024x1024'),
+            'size_scene' => env('OPENAI_IMAGE_SIZE_SCENE', '1024x1536'),
+            'quality' => env('OPENAI_IMAGE_QUALITY', 'medium'),
+            'output_format' => env('OPENAI_IMAGE_OUTPUT_FORMAT', 'png'),
+
+            // Conservative PRE-CALL ESTIMATE constants (not provider-reported
+            // facts): output tokens per generated image and input tokens per
+            // attached reference image. Actual cost is only ever recorded from
+            // provider-reported usage; estimates feed the budget ceiling.
+            'estimate_output_tokens_per_image' => 2048,
+            'estimate_image_input_tokens_per_reference' => 1024,
+            'estimate_prompt_overhead_tokens' => 64,
+        ],
+
+        // Verified image-model list pricing, USD per 1M tokens (2026-10-28):
+        // https://developers.openai.com/api/docs/models/gpt-image-2.5-flare
+        'image_pricing_per_mtok' => [
+            'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
         ],
     ],
 

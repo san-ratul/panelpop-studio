@@ -1,5 +1,6 @@
 <script setup>
-import { Link, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 
 const props = defineProps({
@@ -15,6 +16,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    referenceJobs: {
+        type: Array,
+        default: () => [],
+    },
+    referenceJobActive: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const createForm = useForm({
@@ -22,6 +31,8 @@ const createForm = useForm({
     description: '',
     consistency_notes: '',
 });
+
+const referenceForm = useForm({});
 
 function submitCreate() {
     createForm.post(route('characters.store', props.project.id), {
@@ -33,6 +44,48 @@ function destroy(character) {
     if (confirm(`Delete character "${character.name}"?`)) {
         useForm({}).delete(route('characters.destroy', [props.project.id, character.id]));
     }
+}
+
+function generateReference(character) {
+    referenceForm.post(route('characters.generate-reference', [props.project.id, character.id]), {
+        onSuccess: () => startPolling(),
+    });
+}
+
+const pollTimer = ref(null);
+
+function startPolling() {
+    if (pollTimer.value !== null) {
+        return;
+    }
+
+    pollTimer.value = setInterval(() => {
+        router.reload({
+            only: ['characters', 'referenceJobs', 'referenceJobActive'],
+        });
+    }, 3000);
+}
+
+function stopPolling() {
+    if (pollTimer.value !== null) {
+        clearInterval(pollTimer.value);
+        pollTimer.value = null;
+    }
+}
+
+watch(
+    () => props.referenceJobActive,
+    (active) => {
+        if (!active) {
+            stopPolling();
+        }
+    },
+);
+
+onBeforeUnmount(stopPolling);
+
+if (props.referenceJobActive) {
+    startPolling();
 }
 </script>
 
@@ -51,6 +104,39 @@ function destroy(character) {
             >
                 Go to storyboard
             </Link>
+        </div>
+
+        <p
+            v-if="createForm.errors.name || referenceForm.errors.reference"
+            class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+            {{ createForm.errors.name || referenceForm.errors.reference }}
+        </p>
+
+        <div
+            v-for="job in referenceJobs"
+            :key="job.id"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-medium capitalize">
+                    Reference image #{{ job.id }}<template v-if="job.payload?.character_name"> — {{ job.payload.character_name }}</template> — {{ job.status.replaceAll('_', ' ') }}
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
+            </p>
         </div>
 
         <div class="mt-6 grid gap-6 lg:grid-cols-2">
@@ -168,11 +254,29 @@ function destroy(character) {
                     >
                         {{ character.consistency_notes }}
                     </p>
+                    <div class="mt-3 flex items-center gap-3">
+                        <div class="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                            <img
+                                v-if="character.reference_image_url"
+                                :src="character.reference_image_url"
+                                :alt="`${character.name} reference image`"
+                                class="h-full w-full object-cover"
+                            >
+                        </div>
+                        <button
+                            type="button"
+                            class="text-sm font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="referenceJobActive"
+                            @click="generateReference(character)"
+                        >
+                            {{ character.has_reference_image ? 'Regenerate reference image' : 'Generate reference image' }}
+                        </button>
+                    </div>
                     <p
                         v-if="!character.has_reference_image"
                         class="mt-2 text-xs italic text-gray-400"
                     >
-                        Reference image slot empty (generated in a later phase)
+                        No reference image yet — generate one to keep this character consistent across scenes (best effort).
                     </p>
                 </div>
             </div>

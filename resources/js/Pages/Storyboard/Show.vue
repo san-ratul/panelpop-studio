@@ -37,6 +37,14 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    imageJobs: {
+        type: Array,
+        default: () => [],
+    },
+    imageJobActive: {
+        type: Boolean,
+        default: false,
+    },
     hasReadyStory: {
         type: Boolean,
         default: false,
@@ -62,8 +70,11 @@ const editSceneForm = useForm({
 const completeForm = useForm({});
 const reorderForm = useForm({});
 const planForm = useForm({});
+const imageForm = useForm({});
 
 const latestPlanJob = computed(() => props.planJobs[0] ?? null);
+
+const anyJobActive = computed(() => props.planJobActive || props.imageJobActive);
 
 function submitAddScene() {
     addSceneForm.post(route('scenes.store', props.project.id), {
@@ -120,6 +131,18 @@ function generatePlan() {
     });
 }
 
+function generateImages() {
+    imageForm.post(route('storyboard.generate-images', props.project.id), {
+        onSuccess: () => startPolling(),
+    });
+}
+
+function generateSceneImage(scene) {
+    useForm({}).post(route('scenes.generate-image', [props.project.id, scene.id]), {
+        onSuccess: () => startPolling(),
+    });
+}
+
 const pollTimer = ref(null);
 
 function startPolling() {
@@ -129,7 +152,7 @@ function startPolling() {
 
     pollTimer.value = setInterval(() => {
         router.reload({
-            only: ['planJobs', 'planJobActive', 'scenes', 'characters', 'durationTotal'],
+            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'scenes', 'characters', 'durationTotal'],
         });
     }, 3000);
 }
@@ -142,7 +165,7 @@ function stopPolling() {
 }
 
 watch(
-    () => props.planJobActive,
+    anyJobActive,
     (active) => {
         if (!active) {
             stopPolling();
@@ -152,7 +175,7 @@ watch(
 
 onBeforeUnmount(stopPolling);
 
-if (props.planJobActive) {
+if (anyJobActive.value) {
     startPolling();
 }
 </script>
@@ -185,6 +208,15 @@ if (props.planJobActive) {
                 </button>
                 <button
                     type="button"
+                    :disabled="imageForm.processing || imageJobActive || scenes.length === 0"
+                    :title="scenes.length === 0 ? 'Generate or add a scene plan first' : ''"
+                    class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    @click="generateImages"
+                >
+                    {{ imageJobActive ? 'Generating images…' : 'Generate scene images' }}
+                </button>
+                <button
+                    type="button"
                     :disabled="completeForm.processing"
                     class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="completeStoryboard"
@@ -195,10 +227,10 @@ if (props.planJobActive) {
         </div>
 
         <p
-            v-if="planForm.errors.plan"
+            v-if="planForm.errors.plan || imageForm.errors.images"
             class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-            {{ planForm.errors.plan }}
+            {{ planForm.errors.plan || imageForm.errors.images }}
         </p>
 
         <div
@@ -237,6 +269,32 @@ if (props.planJobActive) {
                 class="mt-1 text-amber-700"
             >
                 {{ job.result.duration_warning }}
+            </p>
+        </div>
+
+        <div
+            v-for="job in imageJobs"
+            :key="`image-${job.id}`"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-medium capitalize">
+                    Scene image #{{ job.id }}<template v-if="job.payload?.scene_number"> — scene {{ job.payload.scene_number }}</template> — {{ job.status.replaceAll('_', ' ') }}
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
             </p>
         </div>
 
@@ -303,13 +361,40 @@ if (props.planJobActive) {
                 </div>
 
                 <div class="mt-3 grid gap-4 md:grid-cols-[160px_1fr]">
-                    <div class="flex aspect-[9/16] w-40 items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-xs text-gray-400">
-                        <template v-if="scene.has_image">
-                            Image ready
-                        </template>
-                        <template v-else>
-                            Image slot empty (generated in a later phase)
-                        </template>
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="flex aspect-[9/16] w-40 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                            <img
+                                v-if="scene.image_url"
+                                :src="scene.image_url"
+                                :alt="`Scene ${scene.number} illustration`"
+                                class="h-full w-full object-cover"
+                            >
+                            <span
+                                v-else
+                                class="p-2 text-center text-xs text-gray-400"
+                            >
+                                <template v-if="scene.status === 'image_generating'">
+                                    Generating…
+                                </template>
+                                <template v-else>
+                                    No image yet
+                                </template>
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            class="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="imageJobActive"
+                            @click="generateSceneImage(scene)"
+                        >
+                            {{ scene.has_image ? 'Regenerate image' : 'Generate image' }}
+                        </button>
+                        <p
+                            v-if="scene.error_message"
+                            class="w-40 text-xs text-red-600"
+                        >
+                            {{ scene.error_message }}
+                        </p>
                     </div>
                     <dl class="space-y-1 text-sm text-gray-700">
                         <div>

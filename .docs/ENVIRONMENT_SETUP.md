@@ -68,14 +68,19 @@ PROVIDER_CREDENTIAL_STORE=env    # env | database
 TEXT_PROVIDER=
 TEXT_MODEL=
 TEXT_API_KEY=
-IMAGE_PROVIDER=
-IMAGE_MODEL=
+IMAGE_PROVIDER=                  # openai (Phase 4, verified)
+IMAGE_MODEL=                     # default gpt-image-2.5-flare (documented snapshot: gpt-image-2.5-flare-2026-09-08)
 IMAGE_API_KEY=
 TTS_PROVIDER=
 TTS_MODEL=
 TTS_API_KEY=
 MUSIC_PROVIDER=                  # optional / deferred
 MUSIC_API_KEY=
+
+# OpenAI adapter options (verified 2026-10-28 — see reference/API_RESEARCH.md):
+#   Text:  OPENAI_MAX_OUTPUT_TOKENS_STORY / _PLAN, OPENAI_TEXT_REASONING_EFFORT, OPENAI_STORE_RESPONSES
+#   Image: OPENAI_IMAGE_SIZE_CHARACTER (1024x1024), OPENAI_IMAGE_SIZE_SCENE (1024x1536),
+#          OPENAI_IMAGE_QUALITY (low|medium|high|xhigh|max), OPENAI_IMAGE_OUTPUT_FORMAT (png|webp|jpeg)
 
 DAILY_PROVIDER_BUDGET_USD=       # optional cost ceiling
 MAX_AUDIO_UPLOAD_MB=20           # placeholder; finalize in Phase 5

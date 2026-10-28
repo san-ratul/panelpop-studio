@@ -25,10 +25,23 @@ final class OpenAICostEstimator implements CostEstimator
 
     public function estimate(ProviderCapability $capability, string $provider, ?string $model, mixed $input = null): ?float
     {
-        if ($capability !== ProviderCapability::Text || $provider !== 'openai') {
+        if ($provider !== 'openai') {
             return null;
         }
 
+        if ($capability === ProviderCapability::Text) {
+            return $this->estimateText($model, $input);
+        }
+
+        if ($capability === ProviderCapability::Image) {
+            return $this->estimateImage($model, $input);
+        }
+
+        return null;
+    }
+
+    private function estimateText(?string $model, mixed $input): ?float
+    {
         // Model IDs contain dots (e.g. "gpt-6.1-terra"), so the pricing map is
         // fetched whole and indexed by the raw model string.
         $rates = config('ai.openai.pricing_per_mtok');
@@ -47,6 +60,59 @@ final class OpenAICostEstimator implements CostEstimator
 
         $cost = ($tokens[0] / 1_000_000) * (float) $rates['input']
             + ($tokens[1] / 1_000_000) * (float) $rates['output'];
+
+        return round(max(0.0, $cost), 6);
+    }
+
+    /**
+     * Conservative pre-call estimate for image generations, derived from the
+     * verified per-token rates (text/image input + image output; see
+     * .docs/reference/API_RESEARCH.md, verified 2026-10-28) and the
+     * documented-as-estimate token constants in config/ai.php. The estimate is
+     * an upper bound for the budget ceiling; the actual ledger cost is only
+     * ever recorded from provider-reported usage (OpenAI reports tokens, not
+     * money, so cost_actual stays null for image calls).
+     */
+    private function estimateImage(?string $model, mixed $input): ?float
+    {
+        if (! is_array($input)) {
+            return null;
+        }
+
+        $kind = $input['kind'] ?? null;
+
+        if (! in_array($kind, ['character_reference', 'scene_image'], true)) {
+            return null;
+        }
+
+        $rates = config('ai.openai.image_pricing_per_mtok');
+        $rates = is_array($rates) ? ($rates[(string) $model] ?? null) : null;
+
+        if (! is_array($rates)
+            || ! isset($rates['text_input'], $rates['image_input'], $rates['image_output'])
+            || ! is_numeric($rates['text_input'])
+            || ! is_numeric($rates['image_input'])
+            || ! is_numeric($rates['image_output'])) {
+            return null;
+        }
+
+        $promptChars = $input['prompt_chars'] ?? null;
+
+        if (! is_numeric($promptChars) || (int) $promptChars < 0) {
+            return null;
+        }
+
+        $referenceCount = max(0, (int) ($input['reference_count'] ?? 0));
+
+        $textTokens = (int) ceil(((int) $promptChars) / self::CHARS_PER_TOKEN)
+            + max(0, (int) config('ai.openai.image.estimate_prompt_overhead_tokens', 64));
+        $imageInputTokens = $referenceCount
+            * max(0, (int) config('ai.openai.image.estimate_image_input_tokens_per_reference', 1024));
+        $outputTokens = max(1, (int) config('ai.openai.image.estimate_output_tokens_per_image', 2048));
+
+        $cost = ($textTokens / 1_000_000) * (float) $rates['text_input']
+            + ($imageInputTokens / 1_000_000) * (float) $rates['image_input']
+            + ($outputTokens / 1_000_000) * (float) $rates['image_output'];
 
         return round(max(0.0, $cost), 6);
     }

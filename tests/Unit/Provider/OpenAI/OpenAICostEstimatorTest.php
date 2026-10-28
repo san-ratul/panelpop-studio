@@ -69,10 +69,87 @@ class OpenAICostEstimatorTest extends TestCase
     public function test_non_text_capabilities_return_null(): void
     {
         $this->assertNull($this->estimator->estimate(
-            ProviderCapability::Image,
+            ProviderCapability::Tts,
             'openai',
             'gpt-6.1-terra',
             ['kind' => 'story', 'topic' => 'A robot'],
+        ));
+
+        $this->assertNull($this->estimator->estimate(
+            ProviderCapability::Music,
+            'openai',
+            'gpt-6.1-terra',
+            ['kind' => 'story', 'topic' => 'A robot'],
+        ));
+    }
+
+    public function test_image_estimate_uses_verified_flare_rates(): void
+    {
+        config([
+            'ai.openai.image_pricing_per_mtok' => [
+                'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
+            ],
+            'ai.openai.image.estimate_prompt_overhead_tokens' => 64,
+            'ai.openai.image.estimate_image_input_tokens_per_reference' => 1024,
+            'ai.openai.image.estimate_output_tokens_per_image' => 2048,
+        ]);
+
+        // character_reference: text tokens = ceil(400/4) + 64 = 164; no refs; 2048 out.
+        $estimate = $this->estimator->estimate(
+            ProviderCapability::Image,
+            'openai',
+            'gpt-image-2.5-flare',
+            ['kind' => 'character_reference', 'prompt_chars' => 400, 'reference_count' => 0],
+        );
+
+        $expected = round(164 / 1_000_000 * 5.00 + 2048 / 1_000_000 * 30.00, 6);
+
+        $this->assertSame($expected, $estimate);
+
+        // scene_image with two reference images: image input = 2 × 1024 tokens.
+        $sceneEstimate = $this->estimator->estimate(
+            ProviderCapability::Image,
+            'openai',
+            'gpt-image-2.5-flare',
+            ['kind' => 'scene_image', 'prompt_chars' => 400, 'reference_count' => 2],
+        );
+
+        $expectedScene = round(
+            164 / 1_000_000 * 5.00 + 2048 / 1_000_000 * 8.00 + 2048 / 1_000_000 * 30.00,
+            6,
+        );
+
+        $this->assertSame($expectedScene, $sceneEstimate);
+        $this->assertGreaterThan($estimate, $sceneEstimate);
+    }
+
+    public function test_image_estimate_is_null_for_unknown_models_and_inputs(): void
+    {
+        config([
+            'ai.openai.image_pricing_per_mtok' => [
+                'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
+            ],
+        ]);
+
+        $this->assertNull($this->estimator->estimate(
+            ProviderCapability::Image,
+            'openai',
+            'made-up-image-model',
+            ['kind' => 'character_reference', 'prompt_chars' => 400, 'reference_count' => 0],
+        ));
+
+        $this->assertNull($this->estimator->estimate(
+            ProviderCapability::Image,
+            'openai',
+            'gpt-image-2.5-flare',
+            ['kind' => 'unknown'],
+        ));
+
+        $this->assertNull($this->estimator->estimate(
+            ProviderCapability::Image,
+            'openai',
+            'gpt-image-2.5-flare',
+            null,
         ));
     }
 

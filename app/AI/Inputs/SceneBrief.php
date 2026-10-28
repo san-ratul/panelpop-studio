@@ -13,5 +13,8 @@ final class SceneBrief
         public readonly string $backgroundDescription = '',
         public readonly float $durationSeconds = 0.0,
         public readonly array $characterNames = [],
+        // Project visual style anchor (Phase 4) — composed into the final
+        // prompt by the adapter's prompt builder (D-011).
+        public readonly ?string $style = null,
     ) {}
 }

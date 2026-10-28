@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\DashboardController;
@@ -50,6 +51,7 @@ Route::middleware('auth')->scopeBindings()->group(function () {
 
     Route::get('/projects/{project}/characters', [CharacterController::class, 'index'])->name('characters.index');
     Route::post('/projects/{project}/characters', [CharacterController::class, 'store'])->name('characters.store');
+    Route::post('/projects/{project}/characters/{character}/generate-reference', [CharacterController::class, 'generateReference'])->name('characters.generate-reference');
     Route::get('/projects/{project}/characters/{character}/edit', [CharacterController::class, 'edit'])->name('characters.edit');
     Route::patch('/projects/{project}/characters/{character}', [CharacterController::class, 'update'])->name('characters.update');
     Route::delete('/projects/{project}/characters/{character}', [CharacterController::class, 'destroy'])->name('characters.destroy');
@@ -57,11 +59,15 @@ Route::middleware('auth')->scopeBindings()->group(function () {
     Route::get('/projects/{project}/storyboard', [StoryboardController::class, 'show'])->name('storyboard.show');
     Route::post('/projects/{project}/storyboard/complete', [StoryboardController::class, 'complete'])->name('storyboard.complete');
     Route::post('/projects/{project}/storyboard/generate-plan', [StoryboardController::class, 'generatePlan'])->name('storyboard.generate-plan');
+    Route::post('/projects/{project}/storyboard/generate-images', [StoryboardController::class, 'generateImages'])->name('storyboard.generate-images');
 
     Route::post('/projects/{project}/scenes', [SceneController::class, 'store'])->name('scenes.store');
     Route::post('/projects/{project}/scenes/reorder', [SceneController::class, 'reorder'])->name('scenes.reorder');
+    Route::post('/projects/{project}/scenes/{scene}/generate-image', [SceneController::class, 'generateImage'])->name('scenes.generate-image');
     Route::patch('/projects/{project}/scenes/{scene}', [SceneController::class, 'update'])->name('scenes.update');
     Route::delete('/projects/{project}/scenes/{scene}', [SceneController::class, 'destroy'])->name('scenes.destroy');
+
+    Route::get('/projects/{project}/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
 
     Route::post('/projects/{project}/scenes/{scene}/dialogue-lines', [SceneDialogueLineController::class, 'store'])->name('dialogue-lines.store');
     Route::patch('/projects/{project}/scenes/{scene}/dialogue-lines/{dialogueLine}', [SceneDialogueLineController::class, 'update'])->name('dialogue-lines.update');

@@ -10,6 +10,7 @@ use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Models\Project;
 use App\Services\DurationValidator;
 use App\Services\GenerationJobGuard;
+use App\Services\SceneImageDispatcher;
 use App\Services\ScenePlanValidator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,7 @@ class StoryboardController extends Controller
         private readonly DurationValidator $durationValidator,
         private readonly ScenePlanValidator $scenePlanValidator,
         private readonly GenerationJobGuard $jobGuard,
+        private readonly SceneImageDispatcher $sceneImageDispatcher,
     ) {}
 
     public function show(Project $project): Response
@@ -34,6 +36,7 @@ class StoryboardController extends Controller
             ->all();
 
         $planJobs = GenerationJobPresenter::recent($project, GenerationJobType::ScenePlanning);
+        $imageJobs = GenerationJobPresenter::recent($project, GenerationJobType::SceneImage);
 
         return Inertia::render('Storyboard/Show', [
             'project' => ProjectController::present($project),
@@ -49,6 +52,8 @@ class StoryboardController extends Controller
             'toleranceSeconds' => DurationValidator::TOLERANCE_SECONDS,
             'planJobs' => $planJobs,
             'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
+            'imageJobs' => $imageJobs,
+            'imageJobActive' => GenerationJobPresenter::hasActive($imageJobs),
             'hasReadyStory' => ($project->story?->status ?? null) === StoryStatus::Ready,
         ]);
     }
@@ -128,5 +133,64 @@ class StoryboardController extends Controller
 
         return redirect()->route('storyboard.show', $project)
             ->with('success', 'Scene planning queued.');
+    }
+
+    /**
+     * Batch fan-out: queues character-reference jobs for every character that
+     * still needs one, then scene-image jobs for every scene whose character
+     * references are complete. Scenes whose references are missing are
+     * reported as waiting (they auto-queue once the last reference lands).
+     */
+    public function generateImages(Project $project): RedirectResponse
+    {
+        $this->authorize('update', $project);
+
+        if ($project->scenes()->doesntExist()) {
+            throw ValidationException::withMessages([
+                'images' => 'No scenes to illustrate. Generate or add a scene plan first.',
+            ]);
+        }
+
+        $queuedReferences = 0;
+
+        foreach ($project->characters()->orderBy('name')->get() as $character) {
+            if ($character->reference_asset_id !== null) {
+                continue;
+            }
+
+            if ($this->jobGuard->activeJobForSubject($project, GenerationJobType::CharacterReference, 'character_id', $character->id) !== null) {
+                continue;
+            }
+
+            $this->jobGuard->launch($project, GenerationJobType::CharacterReference, [
+                'character_id' => $character->id,
+                'character_name' => $character->name,
+            ]);
+
+            $queuedReferences++;
+        }
+
+        $summary = $this->sceneImageDispatcher->dispatchPendingForProject($project);
+
+        $parts = [];
+
+        if ($queuedReferences > 0) {
+            $parts[] = sprintf('%d character reference image(s)', $queuedReferences);
+        }
+
+        if ($summary['queued'] > 0) {
+            $parts[] = sprintf('%d scene image(s)', $summary['queued']);
+        }
+
+        if ($summary['waiting'] > 0) {
+            $parts[] = sprintf('%d scene(s) waiting for character references', $summary['waiting']);
+        }
+
+        $message = $parts === []
+            ? 'All scene images are already up to date.'
+            : 'Queued '.implode(' and ', $parts).'.';
+
+        return redirect()->route('storyboard.show', $project)
+            ->with('success', $message);
     }
 }

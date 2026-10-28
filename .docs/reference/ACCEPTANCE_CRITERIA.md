@@ -12,7 +12,7 @@ Proposed → In progress → Completed (with evidence) | Blocked (reason) | Defe
 | 1 Domain model | **Completed** (2026-10-27) | [../phases/PHASE_01_DOMAIN_MODEL.md](../phases/PHASE_01_DOMAIN_MODEL.md) |
 | 2 Provider layer | **Completed** (2026-10-27) | [../phases/PHASE_02_PROVIDER_LAYER.md](../phases/PHASE_02_PROVIDER_LAYER.md) |
 | 3 Story generation | **Completed** (2026-10-28; manual real-key test pending user credential) | [../phases/PHASE_03_STORY_GENERATION.md](../phases/PHASE_03_STORY_GENERATION.md) |
-| 4 Cartoon images | Proposed | [../phases/PHASE_04_CARTOON_IMAGES.md](../phases/PHASE_04_CARTOON_IMAGES.md) |
+| 4 Cartoon images | **Completed** (2026-10-28; manual real-key test pending user credential) | [../phases/PHASE_04_CARTOON_IMAGES.md](../phases/PHASE_04_CARTOON_IMAGES.md) |
 | 5 Audio | Proposed | [../phases/PHASE_05_AUDIO.md](../phases/PHASE_05_AUDIO.md) |
 | 6 Video rendering | Proposed | [../phases/PHASE_06_VIDEO_RENDERING.md](../phases/PHASE_06_VIDEO_RENDERING.md) |
 | 7 Hardening | Proposed | [../phases/PHASE_07_HARDENING.md](../phases/PHASE_07_HARDENING.md) |
