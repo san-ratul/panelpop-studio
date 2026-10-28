@@ -1,5 +1,6 @@
 import { createInertiaApp } from '@inertiajs/vue3';
 import { createApp, h } from 'vue';
+import { createRouteResolver } from './route.js';
 import '../css/app.css';
 
 createInertiaApp({
@@ -9,9 +10,14 @@ createInertiaApp({
         return pages[`./Pages/${name}.vue`]();
     },
     setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
-            .use(plugin)
-            .mount(el);
+        const route = createRouteResolver(props.initialPage.props.routes);
+
+        window.route = route;
+
+        const app = createApp({ render: () => h(App, props) });
+        app.use(plugin);
+        app.config.globalProperties.route = route;
+        app.mount(el);
     },
     progress: {
         color: '#4B5563',

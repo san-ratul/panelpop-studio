@@ -28,7 +28,7 @@ function submit() {
                 <div>
                     <label
                         for="email"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Email</label>
                     <input
                         id="email"
@@ -38,11 +38,11 @@ function submit() {
                         required
                         autofocus
                         autocomplete="username"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                     <p
                         v-if="form.errors.email"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.email }}
                     </p>
@@ -50,7 +50,7 @@ function submit() {
                 <div>
                     <label
                         for="password"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Password</label>
                     <input
                         id="password"
@@ -59,11 +59,11 @@ function submit() {
                         name="password"
                         required
                         autocomplete="current-password"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                     <p
                         v-if="form.errors.password"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.password }}
                     </p>
@@ -74,14 +74,14 @@ function submit() {
                             v-model="form.remember"
                             type="checkbox"
                             name="remember"
-                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            class="h-4 w-4 accent-indigo-600"
                         >
                         Remember me
                     </label>
                     <button
                         type="submit"
                         :disabled="form.processing"
-                        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Log in
                     </button>

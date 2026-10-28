@@ -178,7 +178,7 @@ if (props.planJobActive) {
                     type="button"
                     :disabled="planForm.processing || planJobActive || !hasReadyStory"
                     :title="hasReadyStory ? '' : 'Generate or save a ready story first'"
-                    class="rounded-md border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                    class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="generatePlan"
                 >
                     {{ planJobActive ? 'Planning…' : 'Generate scene plan with AI' }}
@@ -186,7 +186,7 @@ if (props.planJobActive) {
                 <button
                     type="button"
                     :disabled="completeForm.processing"
-                    class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="completeStoryboard"
                 >
                     Complete storyboard
@@ -341,7 +341,7 @@ if (props.planJobActive) {
                     <div>
                         <label
                             :for="`duration-${scene.id}`"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Duration (seconds, 0.5–120)</label>
                         <input
                             :id="`duration-${scene.id}`"
@@ -351,11 +351,11 @@ if (props.planJobActive) {
                             min="0.5"
                             max="120"
                             required
-                            class="mt-1 block w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-40 rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         >
                         <p
                             v-if="editSceneForm.errors.duration_seconds"
-                            class="mt-1 text-sm text-red-600"
+                            class="mt-2 text-sm text-red-600"
                         >
                             {{ editSceneForm.errors.duration_seconds }}
                         </p>
@@ -363,18 +363,18 @@ if (props.planJobActive) {
                     <div>
                         <label
                             :for="`background-${scene.id}`"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Background description</label>
                         <textarea
                             :id="`background-${scene.id}`"
                             v-model="editSceneForm.background_description"
                             rows="2"
                             required
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         />
                         <p
                             v-if="editSceneForm.errors.background_description"
-                            class="mt-1 text-sm text-red-600"
+                            class="mt-2 text-sm text-red-600"
                         >
                             {{ editSceneForm.errors.background_description }}
                         </p>
@@ -382,18 +382,18 @@ if (props.planJobActive) {
                     <div>
                         <label
                             :for="`prompt-${scene.id}`"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Image prompt</label>
                         <textarea
                             :id="`prompt-${scene.id}`"
                             v-model="editSceneForm.image_prompt"
                             rows="2"
                             required
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         />
                         <p
                             v-if="editSceneForm.errors.image_prompt"
-                            class="mt-1 text-sm text-red-600"
+                            class="mt-2 text-sm text-red-600"
                         >
                             {{ editSceneForm.errors.image_prompt }}
                         </p>
@@ -401,17 +401,17 @@ if (props.planJobActive) {
                     <div>
                         <label
                             :for="`narration-${scene.id}`"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Narration text</label>
                         <textarea
                             :id="`narration-${scene.id}`"
                             v-model="editSceneForm.narration_text"
                             rows="2"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         />
                         <p
                             v-if="editSceneForm.errors.narration_text"
-                            class="mt-1 text-sm text-red-600"
+                            class="mt-2 text-sm text-red-600"
                         >
                             {{ editSceneForm.errors.narration_text }}
                         </p>
@@ -419,7 +419,7 @@ if (props.planJobActive) {
                     <button
                         type="submit"
                         :disabled="editSceneForm.processing"
-                        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                        class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Save scene
                     </button>
@@ -473,7 +473,7 @@ if (props.planJobActive) {
             <div>
                 <label
                     for="add-duration"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Duration (seconds, 0.5–120)</label>
                 <input
                     id="add-duration"
@@ -483,11 +483,11 @@ if (props.planJobActive) {
                     min="0.5"
                     max="120"
                     required
-                    class="mt-1 block w-40 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-40 rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                 <p
                     v-if="addSceneForm.errors.duration_seconds"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ addSceneForm.errors.duration_seconds }}
                 </p>
@@ -495,18 +495,18 @@ if (props.planJobActive) {
             <div>
                 <label
                     for="add-background"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Background description</label>
                 <textarea
                     id="add-background"
                     v-model="addSceneForm.background_description"
                     rows="2"
                     required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 />
                 <p
                     v-if="addSceneForm.errors.background_description"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ addSceneForm.errors.background_description }}
                 </p>
@@ -514,18 +514,18 @@ if (props.planJobActive) {
             <div>
                 <label
                     for="add-prompt"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Image prompt</label>
                 <textarea
                     id="add-prompt"
                     v-model="addSceneForm.image_prompt"
                     rows="2"
                     required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 />
                 <p
                     v-if="addSceneForm.errors.image_prompt"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ addSceneForm.errors.image_prompt }}
                 </p>
@@ -533,17 +533,17 @@ if (props.planJobActive) {
             <div>
                 <label
                     for="add-narration"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Narration text</label>
                 <textarea
                     id="add-narration"
                     v-model="addSceneForm.narration_text"
                     rows="2"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 />
                 <p
                     v-if="addSceneForm.errors.narration_text"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ addSceneForm.errors.narration_text }}
                 </p>
@@ -551,7 +551,7 @@ if (props.planJobActive) {
             <button
                 type="submit"
                 :disabled="addSceneForm.processing"
-                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
                 Add scene
             </button>

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -41,6 +42,27 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user() ? $request->user()->only('id', 'name', 'email') : null,
             ],
             'appName' => config('app.name'),
+            'routes' => $this->routeManifest(),
+            'status' => fn (): mixed => $request->session()->get('status'),
         ];
+    }
+
+    /**
+     * Name → URI manifest consumed by the frontend route() helper
+     * (resources/js/route.js). Built from the router itself so frontend URLs
+     * stay in sync with the backend route definitions. URIs only — no
+     * methods, actions, or secrets.
+     *
+     * @return array<string, string>
+     */
+    private function routeManifest(): array
+    {
+        $manifest = [];
+
+        foreach (Route::getRoutes()->getRoutesByName() as $name => $route) {
+            $manifest[$name] = $route->uri();
+        }
+
+        return $manifest;
     }
 }

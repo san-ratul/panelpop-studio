@@ -64,7 +64,7 @@ function destroy(character) {
                 <div>
                     <label
                         for="name"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Name</label>
                     <input
                         id="name"
@@ -72,11 +72,11 @@ function destroy(character) {
                         type="text"
                         required
                         maxlength="120"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                     <p
                         v-if="createForm.errors.name"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ createForm.errors.name }}
                     </p>
@@ -84,18 +84,18 @@ function destroy(character) {
                 <div>
                     <label
                         for="description"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Description</label>
                     <textarea
                         id="description"
                         v-model="createForm.description"
                         rows="3"
                         required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     />
                     <p
                         v-if="createForm.errors.description"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ createForm.errors.description }}
                     </p>
@@ -103,17 +103,17 @@ function destroy(character) {
                 <div>
                     <label
                         for="consistency_notes"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Consistency notes (style anchors)</label>
                     <textarea
                         id="consistency_notes"
                         v-model="createForm.consistency_notes"
                         rows="2"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     />
                     <p
                         v-if="createForm.errors.consistency_notes"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ createForm.errors.consistency_notes }}
                     </p>
@@ -121,7 +121,7 @@ function destroy(character) {
                 <button
                     type="submit"
                     :disabled="createForm.processing"
-                    class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Add character
                 </button>

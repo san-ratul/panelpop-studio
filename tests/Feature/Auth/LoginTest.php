@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
 
@@ -18,6 +19,29 @@ class LoginTest extends TestCase
         $response->assertOk();
         $response->assertInertia(
             fn (InertiaAssert $page) => $page->component('Auth/Login')
+        );
+    }
+
+    public function test_login_page_shares_the_frontend_route_manifest(): void
+    {
+        // Regression: the login form posts through the shared route() helper
+        // (resources/js/route.js); without the shared manifest it throws
+        // "ReferenceError: route is not defined" on submit.
+        $this->get('/login')->assertInertia(
+            fn (InertiaAssert $page) => $page
+                ->component('Auth/Login')
+                ->has('routes')
+                ->where('routes', function (mixed $routes): bool {
+                    $manifest = $routes instanceof Collection
+                        ? $routes->all()
+                        : (array) $routes;
+
+                    return ($manifest['login'] ?? null) === 'login'
+                        && ($manifest['dashboard'] ?? null) === 'dashboard'
+                        && ($manifest['story.edit'] ?? null) === 'projects/{project}/story/edit'
+                        && ($manifest['scenes.update'] ?? null) === 'projects/{project}/scenes/{scene}'
+                        && ($manifest['provider-settings.update'] ?? null) === 'settings/providers/{providerSetting}';
+                })
         );
     }
 

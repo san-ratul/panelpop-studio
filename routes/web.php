@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PasswordController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProviderSettingsController;
 use App\Http\Controllers\SceneController;
@@ -31,6 +32,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/providers', [ProviderSettingsController::class, 'store'])->name('provider-settings.store');
     Route::patch('/settings/providers/{providerSetting}', [ProviderSettingsController::class, 'update'])->name('provider-settings.update');
     Route::delete('/settings/providers/{providerSetting}', [ProviderSettingsController::class, 'destroy'])->name('provider-settings.destroy');
+
+    Route::get('/settings/password', [PasswordController::class, 'edit'])->name('password.edit');
+    Route::put('/settings/password', [PasswordController::class, 'update'])->name('password.update');
 });
 
 Route::middleware('auth')->scopeBindings()->group(function () {

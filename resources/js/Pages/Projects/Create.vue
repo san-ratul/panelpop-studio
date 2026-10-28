@@ -37,7 +37,7 @@ function submit() {
             <div>
                 <label
                     for="title"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Title</label>
                 <input
                     id="title"
@@ -45,11 +45,11 @@ function submit() {
                     type="text"
                     required
                     maxlength="255"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                 <p
                     v-if="form.errors.title"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ form.errors.title }}
                 </p>
@@ -58,12 +58,12 @@ function submit() {
             <div>
                 <label
                     for="presentation_mode"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Presentation mode</label>
                 <select
                     id="presentation_mode"
                     v-model="form.presentation_mode"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                     <option
                         v-for="mode in presentationModes"
@@ -75,7 +75,7 @@ function submit() {
                 </select>
                 <p
                     v-if="form.errors.presentation_mode"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ form.errors.presentation_mode }}
                 </p>
@@ -84,7 +84,7 @@ function submit() {
             <div>
                 <label
                     for="target_duration_seconds"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Target duration (seconds, 30–90)</label>
                 <input
                     id="target_duration_seconds"
@@ -93,11 +93,11 @@ function submit() {
                     min="30"
                     max="90"
                     required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                 <p
                     v-if="form.errors.target_duration_seconds"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ form.errors.target_duration_seconds }}
                 </p>
@@ -106,7 +106,7 @@ function submit() {
             <div>
                 <label
                     for="visual_style"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Visual style</label>
                 <input
                     id="visual_style"
@@ -114,11 +114,11 @@ function submit() {
                     type="text"
                     required
                     maxlength="100"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                 <p
                     v-if="form.errors.visual_style"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ form.errors.visual_style }}
                 </p>
@@ -127,18 +127,18 @@ function submit() {
             <div>
                 <label
                     for="language"
-                    class="block text-sm font-medium text-gray-700"
+                    class="block text-sm font-medium text-gray-900"
                 >Language</label>
                 <input
                     id="language"
                     v-model="form.language"
                     type="text"
                     maxlength="10"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                 >
                 <p
                     v-if="form.errors.language"
-                    class="mt-1 text-sm text-red-600"
+                    class="mt-2 text-sm text-red-600"
                 >
                     {{ form.errors.language }}
                 </p>
@@ -148,13 +148,13 @@ function submit() {
                 <button
                     type="submit"
                     :disabled="form.processing"
-                    class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Create project
                 </button>
                 <Link
                     :href="route('dashboard')"
-                    class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Cancel
                 </Link>

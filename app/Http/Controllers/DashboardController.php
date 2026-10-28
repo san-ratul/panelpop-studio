@@ -18,6 +18,7 @@ class DashboardController extends Controller
             ->map(static fn (Project $project): array => [
                 ...ProjectController::present($project),
                 'scene_count' => $project->scenes_count,
+                'updated_at' => $project->updated_at->toISOString(),
             ])
             ->values()
             ->all();

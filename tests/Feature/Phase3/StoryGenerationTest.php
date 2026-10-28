@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
+use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
 
 class StoryGenerationTest extends TestCase
@@ -273,6 +274,49 @@ class StoryGenerationTest extends TestCase
         $this->assertStringNotContainsString('sk-supersecret-4242', $page->getContent());
 
         $this->assertSame(1, ProviderCall::count());
+    }
+
+    public function test_story_edit_page_props_carry_the_generated_story(): void
+    {
+        // Regression: generation persisted the story, but the editor form only
+        // reads it on mount — the Inertia props must carry the persisted values
+        // so a fresh visit/refresh shows title, logline and full text.
+        $this->fakeTextDefault();
+
+        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night']);
+
+        $this->get(route('story.edit', $this->project))->assertInertia(
+            fn (InertiaAssert $page) => $page
+                ->component('Story/Edit')
+                ->where('story.title', 'The Deterministic Robot')
+                ->where('story.logline', 'A scripted fake story used to exercise the provider layer.')
+                ->where('story.status', 'ready')
+                ->where('story.full_text', fn (string $text): bool => str_contains($text, 'cartoon panels'))
+                ->where('planJobActive', false)
+        );
+    }
+
+    public function test_edited_story_fields_persist_through_save_after_generation(): void
+    {
+        $this->fakeTextDefault();
+
+        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night']);
+
+        $this->actingAs($this->user)
+            ->from(route('story.edit', $this->project))
+            ->put(route('story.save', $this->project), [
+                'title' => 'Edited Title',
+                'logline' => 'Edited logline.',
+                'full_text' => 'Edited full story text.',
+            ])
+            ->assertRedirect(route('story.edit', $this->project));
+
+        $story = $this->project->fresh()->story;
+
+        $this->assertSame('Edited Title', $story->title);
+        $this->assertSame('Edited logline.', $story->logline);
+        $this->assertSame('Edited full story text.', $story->full_text);
+        $this->assertSame(StoryStatus::Ready, $story->status);
     }
 
     public function test_story_edit_page_shows_recent_generation_jobs(): void

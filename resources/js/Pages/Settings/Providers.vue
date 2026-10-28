@@ -129,12 +129,12 @@ function destroy(setting) {
                 <div>
                     <label
                         for="capability"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Capability</label>
                     <select
                         id="capability"
                         v-model="form.capability"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         @change="onCapabilityChange"
                     >
                         <option
@@ -147,7 +147,7 @@ function destroy(setting) {
                     </select>
                     <p
                         v-if="form.errors.capability"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.capability }}
                     </p>
@@ -156,13 +156,13 @@ function destroy(setting) {
                 <div>
                     <label
                         for="provider"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Provider</label>
                     <select
                         id="provider"
                         v-model="form.provider"
                         required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                         <option
                             v-for="provider in availableProviders"
@@ -174,7 +174,7 @@ function destroy(setting) {
                     </select>
                     <p
                         v-if="form.errors.provider"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.provider }}
                     </p>
@@ -183,7 +183,7 @@ function destroy(setting) {
                 <div>
                     <label
                         for="label"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >Label</label>
                     <input
                         id="label"
@@ -191,11 +191,11 @@ function destroy(setting) {
                         type="text"
                         required
                         maxlength="120"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                     <p
                         v-if="form.errors.label"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.label }}
                     </p>
@@ -205,20 +205,20 @@ function destroy(setting) {
                     <div>
                         <label
                             for="model"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Model</label>
                         <input
                             id="model"
                             v-model="form.model"
                             type="text"
                             maxlength="120"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         >
                     </div>
                     <div>
                         <label
                             for="timeout_seconds"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Timeout (s)</label>
                         <input
                             id="timeout_seconds"
@@ -226,20 +226,20 @@ function destroy(setting) {
                             type="number"
                             min="5"
                             max="600"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         >
                     </div>
                     <div>
                         <label
                             for="base_url"
-                            class="block text-sm font-medium text-gray-700"
+                            class="block text-sm font-medium text-gray-900"
                         >Base URL</label>
                         <input
                             id="base_url"
                             v-model="form.base_url"
                             type="url"
                             maxlength="255"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                         >
                     </div>
                 </div>
@@ -253,18 +253,18 @@ function destroy(setting) {
                 <div>
                     <label
                         for="credentials"
-                        class="block text-sm font-medium text-gray-700"
+                        class="block text-sm font-medium text-gray-900"
                     >API key (write-only)</label>
                     <input
                         id="credentials"
                         v-model="form.credentials"
                         type="password"
                         autocomplete="off"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
                     >
                     <p
                         v-if="form.errors.credentials"
-                        class="mt-1 text-sm text-red-600"
+                        class="mt-2 text-sm text-red-600"
                     >
                         {{ form.errors.credentials }}
                     </p>
@@ -275,7 +275,7 @@ function destroy(setting) {
                         <input
                             v-model="form.is_default"
                             type="checkbox"
-                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            class="h-4 w-4 accent-indigo-600"
                         >
                         Default for capability
                     </label>
@@ -283,7 +283,7 @@ function destroy(setting) {
                         <input
                             v-model="form.is_active"
                             type="checkbox"
-                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            class="h-4 w-4 accent-indigo-600"
                         >
                         Active
                     </label>
@@ -292,7 +292,7 @@ function destroy(setting) {
                 <button
                     type="submit"
                     :disabled="form.processing"
-                    class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Save provider setting
                 </button>

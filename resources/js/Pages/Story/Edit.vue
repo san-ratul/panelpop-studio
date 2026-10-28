@@ -1,3 +1,340 @@
+<template>
+    <AppLayout :auth-user="authUser">
+        <div class="mx-auto max-w-3xl">
+            <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h1 class="text-2xl font-semibold tracking-tight text-gray-900">
+                        Story Editor
+                    </h1>
+                    <p class="mt-1 text-sm text-gray-600">
+                        {{ project.title }}
+                        <span
+                            v-if="project.presentation_mode"
+                            class="text-gray-400"
+                        >
+                            · {{ project.presentation_mode.replaceAll('_', ' ') }} · {{ project.target_duration_seconds }} s target
+                        </span>
+                    </p>
+                </div>
+                <Link
+                    :href="route('storyboard.show', project.id)"
+                    class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                >
+                    Open storyboard
+                </Link>
+            </header>
+
+            <section
+                aria-labelledby="generate-heading"
+                class="mt-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
+            >
+                <h2
+                    id="generate-heading"
+                    class="text-base font-semibold text-gray-900"
+                >
+                    <span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">1</span>
+                    Generate a story with AI
+                </h2>
+                <p class="mt-2 text-sm leading-relaxed text-gray-600">
+                    Describe your idea in a sentence or two. The configured AI text provider writes a title,
+                    a logline and the full story for a {{ project.target_duration_seconds }} second video.
+                    You can edit everything below before saving.
+                </p>
+
+                <form
+                    class="mt-4"
+                    @submit.prevent="generate"
+                >
+                    <label
+                        for="story_idea"
+                        class="block text-sm font-medium text-gray-900"
+                    >
+                        Story idea
+                        <span class="font-normal text-gray-500">(10–5000 characters)</span>
+                    </label>
+                    <textarea
+                        id="story_idea"
+                        v-model="generateForm.story_idea"
+                        rows="4"
+                        required
+                        minlength="10"
+                        maxlength="5000"
+                        :disabled="generationBusy"
+                        class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+                        placeholder="A shy cleaning robot discovers it can paint, and one night its paintings come alive."
+                    />
+                    <div class="mt-2 flex items-center justify-between gap-3">
+                        <p
+                            v-if="generateForm.errors.story_idea"
+                            class="text-sm text-red-600"
+                        >
+                            {{ generateForm.errors.story_idea }}
+                        </p>
+                        <p
+                            v-else
+                            class="text-xs text-gray-500"
+                        >
+                            {{ generateForm.story_idea.length }} / 5000 characters
+                        </p>
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-3">
+                        <button
+                            type="submit"
+                            :disabled="generationBusy"
+                            class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <span
+                                v-if="generationBusy"
+                                class="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                                aria-hidden="true"
+                            />
+                            {{ generationBusy ? 'Generating…' : 'Generate Story' }}
+                        </button>
+                        <p
+                            v-if="generationBusy"
+                            class="text-sm text-gray-500"
+                        >
+                            This usually takes under a minute — the page updates automatically.
+                        </p>
+                    </div>
+                </form>
+
+                <div
+                    v-if="storyJobs.length > 0"
+                    role="status"
+                    class="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                >
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        Generation activity
+                    </h3>
+                    <ul class="mt-2 divide-y divide-gray-200">
+                        <li
+                            v-for="job in storyJobs"
+                            :key="job.id"
+                            class="py-2 first:pt-0 last:pb-0"
+                        >
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span
+                                    class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                                    :class="statusMeta(job.status).badge"
+                                >
+                                    <span
+                                        class="h-1.5 w-1.5 rounded-full"
+                                        :class="[statusMeta(job.status).dot, { 'animate-pulse': job.status === 'running' }]"
+                                        aria-hidden="true"
+                                    />
+                                    {{ statusMeta(job.status).label }}
+                                </span>
+                                <span class="text-sm text-gray-700">
+                                    AI story #{{ job.id }}
+                                </span>
+                                <span class="text-xs text-gray-400">
+                                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                                </span>
+                            </div>
+                            <p
+                                v-if="job.status === 'succeeded' && job.result?.title"
+                                class="mt-1 text-sm font-medium text-gray-900"
+                            >
+                                “{{ job.result.title }}”
+                            </p>
+                            <p
+                                v-if="job.error_message"
+                                class="mt-1 text-sm text-red-600"
+                            >
+                                {{ job.error_message }}
+                            </p>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+
+            <section
+                aria-labelledby="story-heading"
+                class="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
+            >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2
+                        id="story-heading"
+                        class="text-base font-semibold text-gray-900"
+                    >
+                        <span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">2</span>
+                        Your story
+                    </h2>
+                    <span
+                        v-if="story"
+                        class="inline-flex items-center gap-2 text-xs text-gray-500"
+                    >
+                        <span
+                            class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium capitalize"
+                            :class="storyStatusMeta.badge"
+                        >
+                            <span
+                                class="h-1.5 w-1.5 rounded-full"
+                                :class="storyStatusMeta.dot"
+                                aria-hidden="true"
+                            />
+                            {{ story.status.replaceAll('_', ' ') }}
+                        </span>
+                        <template v-if="story.generation_meta?.provider">
+                            via {{ story.generation_meta.provider }}<template v-if="story.generation_meta.model"> · {{ story.generation_meta.model }}</template>
+                        </template>
+                    </span>
+                </div>
+
+                <p
+                    v-if="!story"
+                    class="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500"
+                >
+                    No story yet. Generate one above, or start writing your own below — either way,
+                    save it here before planning scenes.
+                </p>
+
+                <form
+                    class="mt-4 space-y-4"
+                    @submit.prevent="submit"
+                >
+                    <div>
+                        <label
+                            for="story-title"
+                            class="block text-sm font-medium text-gray-900"
+                        >
+                            Title
+                            <span class="font-normal text-gray-500">(max 255 characters)</span>
+                        </label>
+                        <input
+                            id="story-title"
+                            v-model="form.title"
+                            type="text"
+                            required
+                            maxlength="255"
+                            placeholder="e.g. The Brave Little Robot"
+                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                        >
+                        <p
+                            v-if="form.errors.title"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ form.errors.title }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <label
+                            for="logline"
+                            class="block text-sm font-medium text-gray-900"
+                        >
+                            Logline
+                            <span class="font-normal text-gray-500">(one sentence, max 500 characters)</span>
+                        </label>
+                        <input
+                            id="logline"
+                            v-model="form.logline"
+                            type="text"
+                            maxlength="500"
+                            placeholder="One sentence that makes someone want to watch."
+                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                        >
+                        <p
+                            v-if="form.errors.logline"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ form.errors.logline }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <label
+                            for="full_text"
+                            class="block text-sm font-medium text-gray-900"
+                        >
+                            Full story text
+                        </label>
+                        <textarea
+                            id="full_text"
+                            v-model="form.full_text"
+                            rows="16"
+                            required
+                            placeholder="Once upon a time…"
+                            class="mt-1.5 block w-full min-h-64 resize-y rounded-lg border border-gray-300 bg-white px-4 py-4 text-[15px] leading-7 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                        />
+                        <p
+                            v-if="form.errors.full_text"
+                            class="mt-2 text-sm text-red-600"
+                        >
+                            {{ form.errors.full_text }}
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button
+                            type="submit"
+                            :disabled="form.processing"
+                            class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {{ form.processing ? 'Saving…' : 'Save Story' }}
+                        </button>
+                        <span
+                            v-if="form.recentlySuccessful"
+                            class="text-sm font-medium text-emerald-600"
+                        >
+                            Story saved.
+                        </span>
+                        <span
+                            v-if="form.isDirty && !form.processing"
+                            class="text-xs text-gray-400"
+                        >
+                            Unsaved changes
+                        </span>
+                    </div>
+                </form>
+            </section>
+
+            <section
+                aria-labelledby="plan-heading"
+                class="mt-6 mb-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6"
+            >
+                <h2
+                    id="plan-heading"
+                    class="text-base font-semibold text-gray-900"
+                >
+                    <span class="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700">3</span>
+                    Plan the scenes
+                </h2>
+                <p class="mt-2 text-sm leading-relaxed text-gray-600">
+                    Once your story is ready, let the AI split it into timed scenes with visuals,
+                    narration and dialogue. You will review and fine-tune the plan on the storyboard,
+                    where scene durations must total {{ project.target_duration_seconds }} s (±2 s) before completion.
+                </p>
+                <div class="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        :disabled="planForm.processing || planJobActive || !hasReadyStory"
+                        :title="hasReadyStory ? '' : 'Save a story first — scene planning needs a ready story.'"
+                        class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        @click="generatePlan"
+                    >
+                        {{ planBusy ? 'Planning…' : 'Generate Scene Plan' }}
+                    </button>
+                    <p
+                        v-if="!hasReadyStory"
+                        class="text-sm text-gray-500"
+                    >
+                        Available after the story is ready.
+                    </p>
+                    <p
+                        v-if="planForm.errors.plan"
+                        class="text-sm text-red-600"
+                    >
+                        {{ planForm.errors.plan }}
+                    </p>
+                </div>
+            </section>
+        </div>
+    </AppLayout>
+</template>
+
 <script setup>
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -28,6 +365,10 @@ const props = defineProps({
         type: String,
         default: '',
     },
+    planJobActive: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const form = useForm({
@@ -40,7 +381,37 @@ const generateForm = useForm({
     story_idea: props.storyIdea,
 });
 
-const latestJob = computed(() => props.storyJobs[0] ?? null);
+const planForm = useForm({});
+
+const pollTimer = ref(null);
+
+const generationBusy = computed(() => generateForm.processing || props.storyJobActive);
+const planBusy = computed(() => planForm.processing || props.planJobActive);
+
+const hasReadyStory = computed(() => props.story?.status === 'ready');
+
+const STATUS_META = {
+    queued: { label: 'Queued', badge: 'bg-amber-50 text-amber-700', dot: 'bg-amber-400' },
+    running: { label: 'Generating', badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
+    succeeded: { label: 'Succeeded', badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    failed: { label: 'Failed', badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+    cancelled: { label: 'Cancelled', badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+};
+
+function statusMeta(status) {
+    return STATUS_META[status] ?? { label: status.replaceAll('_', ' '), badge: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' };
+}
+
+const STORY_STATUS_META = {
+    generating: { badge: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
+    ready: { badge: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    failed: { badge: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+};
+
+const storyStatusMeta = computed(() => STORY_STATUS_META[props.story?.status] ?? {
+    badge: 'bg-gray-100 text-gray-600',
+    dot: 'bg-gray-400',
+});
 
 function submit() {
     form.put(route('story.save', props.project.id));
@@ -52,7 +423,9 @@ function generate() {
     });
 }
 
-const pollTimer = ref(null);
+function generatePlan() {
+    planForm.post(route('storyboard.generate-plan', props.project.id));
+}
 
 function startPolling() {
     if (pollTimer.value !== null) {
@@ -82,197 +455,25 @@ watch(
     },
 );
 
+// Populate the editor fields when a generation lands, without ever clobbering
+// unsaved user edits: the sync is skipped while the form is dirty, so edits
+// are preserved through polling and through failed generations.
+watch(
+    () => props.story,
+    (fresh) => {
+        if (!fresh || form.isDirty) {
+            return;
+        }
+
+        form.title = fresh.title ?? '';
+        form.logline = fresh.logline ?? '';
+        form.full_text = fresh.full_text ?? '';
+    },
+);
+
 onBeforeUnmount(stopPolling);
 
 if (props.storyJobActive) {
     startPolling();
 }
 </script>
-
-<template>
-    <AppLayout :auth-user="authUser">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-2xl font-semibold text-gray-900">Story editor</h1>
-                <p class="mt-1 text-sm text-gray-600">
-                    {{ project.title }}
-                </p>
-            </div>
-            <Link
-                :href="route('storyboard.show', project.id)"
-                class="text-sm text-indigo-600 hover:text-indigo-800"
-            >
-                Go to storyboard
-            </Link>
-        </div>
-
-        <div class="mt-6 max-w-3xl space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-            <h2 class="font-semibold text-gray-900">
-                Generate a story with AI
-            </h2>
-            <p class="text-sm text-gray-600">
-                Describe your idea. The configured AI text provider writes a title, logline and
-                full story for a {{ project.target_duration_seconds }} second video
-                ({{ project.presentation_mode.replaceAll('_', ' ') }} mode). You can edit the result below.
-            </p>
-            <form @submit.prevent="generate">
-                <label
-                    for="story_idea"
-                    class="block text-sm font-medium text-gray-700"
-                >Story idea (10–5000 characters)</label>
-                <textarea
-                    id="story_idea"
-                    v-model="generateForm.story_idea"
-                    rows="4"
-                    required
-                    minlength="10"
-                    maxlength="5000"
-                    :disabled="storyJobActive"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-100"
-                    placeholder="A shy cleaning robot discovers it can paint, and one night its paintings come alive."
-                />
-                <p
-                    v-if="generateForm.errors.story_idea"
-                    class="mt-1 text-sm text-red-600"
-                >
-                    {{ generateForm.errors.story_idea }}
-                </p>
-                <div class="mt-3 flex items-center gap-3">
-                    <button
-                        type="submit"
-                        :disabled="generateForm.processing || storyJobActive"
-                        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                        {{ storyJobActive ? 'Generating…' : 'Generate story' }}
-                    </button>
-                    <span
-                        v-if="storyJobActive"
-                        class="text-sm text-gray-500"
-                    >
-                        Generation in progress — this page updates automatically.
-                    </span>
-                </div>
-            </form>
-
-            <div
-                v-for="job in storyJobs"
-                :key="job.id"
-                class="rounded-md border p-3 text-sm"
-                :class="{
-                    'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
-                    'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
-                    'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
-                }"
-            >
-                <div class="flex items-center justify-between gap-3">
-                    <span class="font-medium capitalize">
-                        AI story #{{ job.id }} — {{ job.status.replaceAll('_', ' ') }}
-                    </span>
-                    <span class="text-xs text-gray-500">
-                        attempt {{ job.attempts }}/{{ job.max_attempts }}
-                    </span>
-                </div>
-                <p
-                    v-if="job.error_message"
-                    class="mt-1"
-                >
-                    {{ job.error_message }}
-                </p>
-                <p
-                    v-else-if="job.status === 'succeeded' && job.result"
-                    class="mt-1"
-                >
-                    Generated "{{ job.result.title }}".
-                </p>
-            </div>
-        </div>
-
-        <form
-            class="mt-6 max-w-3xl space-y-4 rounded-lg border border-gray-200 bg-white p-6"
-            @submit.prevent="submit"
-        >
-            <h2 class="font-semibold text-gray-900">
-                Story
-            </h2>
-            <div>
-                <label
-                    for="story-title"
-                    class="block text-sm font-medium text-gray-700"
-                >Title</label>
-                <input
-                    id="story-title"
-                    v-model="form.title"
-                    type="text"
-                    required
-                    maxlength="255"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                >
-                <p
-                    v-if="form.errors.title"
-                    class="mt-1 text-sm text-red-600"
-                >
-                    {{ form.errors.title }}
-                </p>
-            </div>
-
-            <div>
-                <label
-                    for="logline"
-                    class="block text-sm font-medium text-gray-700"
-                >Logline (max 500 characters)</label>
-                <input
-                    id="logline"
-                    v-model="form.logline"
-                    type="text"
-                    maxlength="500"
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                >
-                <p
-                    v-if="form.errors.logline"
-                    class="mt-1 text-sm text-red-600"
-                >
-                    {{ form.errors.logline }}
-                </p>
-            </div>
-
-            <div>
-                <label
-                    for="full_text"
-                    class="block text-sm font-medium text-gray-700"
-                >Full story text</label>
-                <textarea
-                    id="full_text"
-                    v-model="form.full_text"
-                    rows="12"
-                    required
-                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                />
-                <p
-                    v-if="form.errors.full_text"
-                    class="mt-1 text-sm text-red-600"
-                >
-                    {{ form.errors.full_text }}
-                </p>
-            </div>
-
-            <div class="flex items-center gap-3">
-                <button
-                    type="submit"
-                    :disabled="form.processing"
-                    class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                >
-                    Save story
-                </button>
-                <span
-                    v-if="story"
-                    class="text-sm capitalize text-gray-500"
-                >
-                    Status: {{ story.status.replaceAll('_', ' ') }}
-                    <template v-if="story.generation_meta?.provider">
-                        ({{ story.generation_meta.provider }}<template v-if="story.generation_meta.model"> / {{ story.generation_meta.model }}</template>)
-                    </template>
-                </span>
-            </div>
-        </form>
-    </AppLayout>
-</template>

@@ -36,5 +36,24 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- Provider env is pinned so the automated suite stays deterministic
+             and can never pick up a real credential from a local .env (the
+             suite must make zero real provider calls). Tests configure
+             providers via config() and provider_settings rows. -->
+        <env name="TEXT_PROVIDER" value=""/>
+        <env name="TEXT_MODEL" value=""/>
+        <env name="TEXT_API_KEY" value=""/>
+        <env name="IMAGE_PROVIDER" value=""/>
+        <env name="IMAGE_MODEL" value=""/>
+        <env name="IMAGE_API_KEY" value=""/>
+        <env name="TTS_PROVIDER" value=""/>
+        <env name="TTS_MODEL" value=""/>
+        <env name="TTS_API_KEY" value=""/>
+        <env name="MUSIC_PROVIDER" value=""/>
+        <env name="MUSIC_MODEL" value=""/>
+        <env name="MUSIC_API_KEY" value=""/>
+        <env name="DAILY_PROVIDER_BUDGET_USD" value=""/>
+        <env name="PROVIDER_CREDENTIAL_STORE" value="env"/>
+        <env name="OPENAI_BASE_URL" value="https://api.openai.com/v1"/>
     </php>
 </phpunit>

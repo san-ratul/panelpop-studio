@@ -29,6 +29,7 @@ class StoryController extends Controller
         $story = $project->story;
 
         $storyJobs = GenerationJobPresenter::recent($project, GenerationJobType::StoryGeneration);
+        $planJobs = GenerationJobPresenter::recent($project, GenerationJobType::ScenePlanning);
 
         return Inertia::render('Story/Edit', [
             'project' => ProjectController::present($project),
@@ -41,6 +42,7 @@ class StoryController extends Controller
             ] : null,
             'storyJobs' => $storyJobs,
             'storyJobActive' => GenerationJobPresenter::hasActive($storyJobs),
+            'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
             'storyIdea' => $storyJobs[0]['payload']['story_idea'] ?? '',
         ]);
     }
