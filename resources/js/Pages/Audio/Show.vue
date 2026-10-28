@@ -245,6 +245,9 @@ function formatDuration(ms) {
                 <Link :href="route('characters.index', project.id)" class="text-sm text-indigo-600 hover:text-indigo-800">
                     Characters
                 </Link>
+                <Link :href="route('render.show', project.id)" class="text-sm text-indigo-600 hover:text-indigo-800">
+                    Render
+                </Link>
             </div>
         </div>
 

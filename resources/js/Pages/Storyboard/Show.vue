@@ -197,6 +197,12 @@ if (anyJobActive.value) {
                 >
                     Story editor
                 </Link>
+                <Link
+                    :href="route('render.show', project.id)"
+                    class="text-sm text-indigo-600 hover:text-indigo-800"
+                >
+                    Render
+                </Link>
                 <button
                     type="button"
                     :disabled="planForm.processing || planJobActive || !hasReadyStory"

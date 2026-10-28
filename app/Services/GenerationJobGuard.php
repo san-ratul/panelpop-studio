@@ -9,6 +9,7 @@ use App\Jobs\GenerateSceneImageJob;
 use App\Jobs\GenerateStoryJob;
 use App\Jobs\GenerateVoiceJob;
 use App\Jobs\PlanScenesJob;
+use App\Jobs\RenderVideoJob;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ use Throwable;
 final class GenerationJobGuard
 {
     /** Rows running/queued for longer than this are considered dead. */
-    private const STALE_MINUTES = 60;
+    public const STALE_MINUTES = 60;
 
     public function cancelStale(Project $project, GenerationJobType $type): int
     {
@@ -174,6 +175,10 @@ final class GenerationJobGuard
                 (int) ($payload['scene_id'] ?? 0),
                 ($payload['dialogue_line_id'] ?? null) !== null ? (int) $payload['dialogue_line_id'] : null,
                 (bool) ($payload['force'] ?? false),
+            ),
+            GenerationJobType::VideoRender => new RenderVideoJob(
+                $project->id,
+                $job->id,
             ),
             default => throw new LogicException(sprintf('No queue job is wired for generation job type "%s".', $type->value)),
         };

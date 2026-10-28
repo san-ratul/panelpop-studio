@@ -22,6 +22,7 @@
 | Final video validation | FFprobe gate logic: pass on conforming fixture metadata; fail on wrong codec/resolution/duration/missing audio | FFprobe JSON fixtures |
 | Protected downloads | Owner can download MP4/thumbnail/SRT; non-owner gets 403/404; assets never publicly reachable | [SECURITY.md](SECURITY.md) |
 | Licence gate | Unverified-licence music/SFX blocks render pre-flight with actionable message; verified passes | [AUDIO_AND_LICENSING.md](AUDIO_AND_LICENSING.md) |
+| Real-FFmpeg integration | Silent project → video-only MP4; narrator → AAC + SRT + thumbnail; full contract (1080×1920/30 fps/h264/yuv420p/faststart) verified with the REAL binary | `tests/Feature/Phase6/RenderIntegrationTest.php` — runs when `FFMPEG_BINARY`/`FFPROBE_BINARY` are configured (gyan.dev build installed 2026-10-28), **skips with an explicit reason when not**; a skip is never reported as a pass |
 | Secrets hygiene | Provider settings never serialize credentials; exception/log redaction | [SECURITY.md](SECURITY.md) |
 
 ## Commands (after Phase 0)

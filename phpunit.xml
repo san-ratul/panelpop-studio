@@ -55,5 +55,13 @@
         <env name="DAILY_PROVIDER_BUDGET_USD" value=""/>
         <env name="PROVIDER_CREDENTIAL_STORE" value="env"/>
         <env name="OPENAI_BASE_URL" value="https://api.openai.com/v1"/>
+        <!-- Phase 6 rendering: encode knobs only affect SPEED in the suite.
+             The output contract (H.264/AAC, 1080x1920, 30 fps, +faststart) is
+             enforced independently of preset/CRF by FfprobeGate. Disk-space
+             pre-flight is disabled suite-wide; the dedicated test sets its
+             own threshold via config. -->
+        <env name="FFMPEG_X264_PRESET" value="ultrafast"/>
+        <env name="FFMPEG_CRF" value="40"/>
+        <env name="FFMPEG_MIN_FREE_DISK_MB" value="0"/>
     </php>
 </phpunit>

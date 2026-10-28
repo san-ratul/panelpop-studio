@@ -24,12 +24,23 @@
 
 ## Local prerequisites checklist
 
-1. **Install FFmpeg + FFprobe** (before Phase 6; earlier is better for pipeline experiments): use a Windows build (e.g., gyan.dev "essentials"). Then either add to PATH **or** set binary paths in `.env`:
+1. **Install FFmpeg + FFprobe** (before Phase 6; earlier is better for pipeline experiments). **As executed on this machine (2026-10-28)**: `winget install --id Gyan.FFmpeg --source winget --accept-source-agreements --accept-package-agreements` (gyan.dev full build, the trusted distribution referenced below), then copy the self-contained static binaries to the documented stable location and configure explicit paths:
+   ```bat
+   mkdir C:\ffmpeg\bin
+   copy "%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-*-full_build\bin\ffmpeg.exe" C:\ffmpeg\bin\
+   copy "%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-*-full_build\bin\ffprobe.exe" C:\ffmpeg\bin\
+   ```
+   Then set binary paths in `.env` (the app never assumes PATH — D-008):
    ```ini
    FFMPEG_BINARY=C:/ffmpeg/bin/ffmpeg.exe
    FFPROBE_BINARY=C:/ffmpeg/bin/ffprobe.exe
    ```
-   The app must never assume PATH availability — config values are the single source of truth. Verify: `ffmpeg -version`, `ffprobe -version`.
+   Alternative: any official Windows build (gyan.dev "essentials" is the ffmpeg.org-recommended source). Verify the machine setup:
+   ```sh
+   ffmpeg -version && ffprobe -version   # expect 9.0.2-full_build-www.gyan.dev or newer
+   php artisan ffmpeg:check              # app-level health check → "FFmpeg configuration OK."
+   ```
+   Phase 6 additionally requires **libx264 (H.264) + aac encoders** and the filters `zoompan`, `xfade`, `amix`, `adelay`, `loudnorm`, `sidechaincompress`, `overlay`, `atrim`, `anullsrc` — the gyan.dev full build ships all of them (verified 2026-10-28). The render pre-flight (`BinaryProbe`) checks binaries + codecs before every render and reports an actionable error when missing.
 2. **MySQL**: start via Laragon; create the dev database:
    ```sql
    CREATE DATABASE cartoon_studio CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

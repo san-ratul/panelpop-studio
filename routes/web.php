@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasswordController;
 use App\Http\Controllers\ProjectAudioController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectRenderController;
 use App\Http\Controllers\ProviderSettingsController;
 use App\Http\Controllers\SceneController;
 use App\Http\Controllers\SceneDialogueLineController;
@@ -76,6 +77,9 @@ Route::middleware('auth')->scopeBindings()->group(function () {
     Route::post('/projects/{project}/scenes/{scene}/generate-image', [SceneController::class, 'generateImage'])->name('scenes.generate-image');
     Route::patch('/projects/{project}/scenes/{scene}', [SceneController::class, 'update'])->name('scenes.update');
     Route::delete('/projects/{project}/scenes/{scene}', [SceneController::class, 'destroy'])->name('scenes.destroy');
+
+    Route::get('/projects/{project}/render', [ProjectRenderController::class, 'show'])->name('render.show');
+    Route::post('/projects/{project}/render', [ProjectRenderController::class, 'store'])->name('render.store');
 
     Route::get('/projects/{project}/assets/{asset}', [AssetController::class, 'show'])->name('assets.show');
 
