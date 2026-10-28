@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { createRouteResolver } from '@/route.js';
+import { buttonVariants } from '@/Components/Form/buttonVariants.js';
 
 const props = defineProps({
     authUser: {
@@ -106,7 +107,7 @@ function linkClass(link) {
                         </span>
                         <button
                             type="button"
-                            class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-xs transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                            :class="buttonVariants({ variant: 'secondary', size: 'sm' })"
                             @click="$inertia.post(route('logout'))"
                         >
                             Log out
@@ -115,7 +116,7 @@ function linkClass(link) {
                     <Link
                         v-else
                         :href="route('login')"
-                        class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                        :class="buttonVariants({ variant: 'primary' })"
                     >
                         Log in
                     </Link>

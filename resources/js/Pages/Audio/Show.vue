@@ -2,6 +2,15 @@
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import BaseButton from '@/Components/Form/BaseButton.vue';
+import CheckboxGroup from '@/Components/Form/CheckboxGroup.vue';
+import CheckboxInput from '@/Components/Form/CheckboxInput.vue';
+import FileInput from '@/Components/Form/FileInput.vue';
+import FieldError from '@/Components/Form/FieldError.vue';
+import SelectInput from '@/Components/Form/SelectInput.vue';
+import TextArea from '@/Components/Form/TextArea.vue';
+import TextInput from '@/Components/Form/TextInput.vue';
+import { buttonVariants } from '@/Components/Form/buttonVariants.js';
 
 const props = defineProps({
     authUser: {
@@ -258,14 +267,23 @@ function formatDuration(ms) {
                     <span class="font-medium text-gray-900">{{ project.presentation_mode }}</span>
                 </p>
             </div>
-            <div class="flex items-center gap-3">
-                <Link :href="route('storyboard.show', project.id)" class="text-sm text-indigo-600 hover:text-indigo-800">
+            <div class="flex flex-wrap items-center gap-2">
+                <Link
+                    :href="route('storyboard.show', project.id)"
+                    :class="buttonVariants({ variant: 'secondary' })"
+                >
                     Storyboard
                 </Link>
-                <Link :href="route('characters.index', project.id)" class="text-sm text-indigo-600 hover:text-indigo-800">
+                <Link
+                    :href="route('characters.index', project.id)"
+                    :class="buttonVariants({ variant: 'secondary' })"
+                >
                     Characters
                 </Link>
-                <Link :href="route('render.show', project.id)" class="text-sm text-indigo-600 hover:text-indigo-800">
+                <Link
+                    :href="route('render.show', project.id)"
+                    :class="buttonVariants({ variant: 'secondary' })"
+                >
                     Render
                 </Link>
             </div>
@@ -296,19 +314,17 @@ function formatDuration(ms) {
                         </template>
                     </p>
                 </div>
-                <button
-                    type="button"
-                    class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                <BaseButton
                     :disabled="generateForm.processing || voiceJobActive"
                     @click="generateVoice"
                 >
                     {{ generateForm.processing || voiceJobActive ? 'Generating…' : 'Generate missing voice audio' }}
-                </button>
+                </BaseButton>
             </div>
 
-            <p v-if="generateForm.errors.voice" class="mt-3 text-sm text-red-600">
-                {{ generateForm.errors.voice }}
-            </p>
+            <div class="mt-3">
+                <FieldError :error="generateForm.errors.voice" />
+            </div>
             <p v-if="latestVoiceJob?.error_message" class="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">
                 {{ latestVoiceJob.error_message }}
             </p>
@@ -320,56 +336,45 @@ function formatDuration(ms) {
                 Voice used for scene narration blocks. Leave empty to use the provider default ({{ defaultVoice }}).
             </p>
             <div class="mt-4 grid gap-4 md:grid-cols-3">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="narration-voice">Voice</label>
-                    <select
-                        id="narration-voice"
-                        v-model="narrationVoiceForm.voice"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    >
-                        <option value="">Provider default ({{ defaultVoice }})</option>
-                        <option v-for="option in voiceOptions" :key="option.value" :value="option.value">
-                            {{ option.label }}
-                        </option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="narration-speed">Speed (0.25–4.0)</label>
-                    <input
-                        id="narration-speed"
-                        v-model="narrationVoiceForm.speed"
-                        type="number"
-                        step="0.05"
-                        min="0.25"
-                        max="4"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="narration-instructions">Style instructions</label>
-                    <input
-                        id="narration-instructions"
-                        v-model="narrationVoiceForm.instructions"
-                        type="text"
-                        maxlength="4096"
-                        placeholder="e.g. warm, calm documentary tone"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
+                <SelectInput
+                    id="narration-voice"
+                    v-model="narrationVoiceForm.voice"
+                    label="Voice"
+                >
+                    <option value="">Provider default ({{ defaultVoice }})</option>
+                    <option v-for="option in voiceOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </SelectInput>
+                <TextInput
+                    id="narration-speed"
+                    v-model="narrationVoiceForm.speed"
+                    type="number"
+                    label="Speed (0.25–4.0)"
+                    step="0.05"
+                    min="0.25"
+                    max="4"
+                />
+                <TextInput
+                    id="narration-instructions"
+                    v-model="narrationVoiceForm.instructions"
+                    type="text"
+                    label="Style instructions"
+                    maxlength="4096"
+                    placeholder="e.g. warm, calm documentary tone"
+                />
             </div>
             <div class="mt-4">
-                <button
-                    type="button"
-                    class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                <BaseButton
                     :disabled="narrationVoiceForm.processing"
                     @click="saveNarrationVoice"
                 >
                     Save narration voice
-                </button>
+                </BaseButton>
             </div>
-            <p v-if="narrationVoiceErrors" class="mt-2 text-sm text-red-600">
-                {{ narrationVoiceErrors }}
-            </p>
+            <div class="mt-2">
+                <FieldError :error="narrationVoiceErrors" />
+            </div>
         </section>
 
         <section v-if="narrationEnabled || dialogueEnabled" class="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -392,15 +397,15 @@ function formatDuration(ms) {
                             <p class="font-medium text-gray-900">Scene {{ scene.number }}</p>
                             <p class="text-sm text-gray-500">Planned duration: {{ scene.duration_seconds }} s</p>
                         </div>
-                        <button
+                        <BaseButton
                             v-if="narrationEnabled"
-                            type="button"
-                            class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            variant="secondary"
+                            size="sm"
                             :disabled="generateForm.processing || voiceJobActive"
                             @click="generateNarration(scene)"
                         >
                             {{ scene.narration_audio_url ? 'Regenerate narration' : 'Generate narration' }}
-                        </button>
+                        </BaseButton>
                     </div>
                     <p v-if="narrationEnabled && scene.narration_text" class="mt-2 text-sm text-gray-600">
                         {{ scene.narration_text }}
@@ -446,14 +451,14 @@ function formatDuration(ms) {
                                         preload="none"
                                         class="h-8"
                                     />
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    <BaseButton
+                                        variant="secondary"
+                                        size="sm"
                                         :disabled="generateForm.processing || voiceJobActive"
                                         @click="generateLineVoice(scene, line)"
                                     >
                                         {{ line.audio_url ? 'Regenerate' : 'Generate voice' }}
-                                    </button>
+                                    </BaseButton>
                                 </div>
                             </div>
                         </li>
@@ -471,112 +476,72 @@ function formatDuration(ms) {
             </p>
 
             <div class="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="audio-type">Type</label>
-                    <select
-                        id="audio-type"
-                        v-model="uploadForm.type"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    >
-                        <option value="music">Music</option>
-                        <option value="sfx">Sound effect</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="audio-file">Audio file</label>
-                    <input
-                        id="audio-file"
-                        type="file"
-                        accept=".mp3,.wav,.ogg,.m4a,.flac,audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/flac"
-                        class="mt-1 block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-                        @change="onFileChange"
-                    />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="source-name">Source name</label>
-                    <input
-                        id="source-name"
-                        v-model="uploadForm.source_name"
-                        type="text"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                    <p v-if="uploadForm.errors.source_name" class="mt-1 text-sm text-red-600">
-                        {{ uploadForm.errors.source_name }}
-                    </p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="source-url">Source URL (optional)</label>
-                    <input
-                        id="source-url"
-                        v-model="uploadForm.source_url"
-                        type="url"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="licence-type">Licence type</label>
-                    <input
-                        id="licence-type"
-                        v-model="uploadForm.licence_type"
-                        type="text"
-                        placeholder="e.g. CC BY 4.0, standard commercial licence"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="licence-url">Licence URL</label>
-                    <input
-                        id="licence-url"
-                        v-model="uploadForm.licence_url"
-                        type="url"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700" for="attribution">Required attribution</label>
-                    <input
-                        id="attribution"
-                        v-model="uploadForm.attribution"
-                        type="text"
-                        placeholder="Exact attribution string, if the licence requires one"
-                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    />
-                </div>
+                <SelectInput
+                    id="audio-type"
+                    v-model="uploadForm.type"
+                    label="Type"
+                >
+                    <option value="music">Music</option>
+                    <option value="sfx">Sound effect</option>
+                </SelectInput>
+                <FileInput
+                    id="audio-file"
+                    label="Audio file"
+                    accept=".mp3,.wav,.ogg,.m4a,.flac,audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/flac"
+                    @change="onFileChange"
+                />
+                <TextInput
+                    id="source-name"
+                    v-model="uploadForm.source_name"
+                    type="text"
+                    label="Source name"
+                    :error="uploadForm.errors.source_name"
+                />
+                <TextInput
+                    id="source-url"
+                    v-model="uploadForm.source_url"
+                    type="url"
+                    label="Source URL (optional)"
+                />
+                <TextInput
+                    id="licence-type"
+                    v-model="uploadForm.licence_type"
+                    type="text"
+                    label="Licence type"
+                    placeholder="e.g. CC BY 4.0, standard commercial licence"
+                />
+                <TextInput
+                    id="licence-url"
+                    v-model="uploadForm.licence_url"
+                    type="url"
+                    label="Licence URL"
+                />
+                <TextInput
+                    id="attribution"
+                    v-model="uploadForm.attribution"
+                    type="text"
+                    label="Required attribution"
+                    placeholder="Exact attribution string, if the licence requires one"
+                    class="md:col-span-2"
+                />
             </div>
-            <fieldset class="mt-4">
-                <legend class="text-sm font-medium text-gray-700">Allowed uses</legend>
-                <div class="mt-2 flex flex-wrap gap-4">
-                    <label
-                        v-for="option in allowedUseOptions"
-                        :key="option.value"
-                        class="flex items-center gap-2 text-sm text-gray-700"
-                    >
-                        <input
-                            v-model="uploadForm.allowed_uses"
-                            type="checkbox"
-                            :value="option.value"
-                            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        {{ option.label }}
-                    </label>
-                </div>
-            </fieldset>
+            <CheckboxGroup
+                v-model="uploadForm.allowed_uses"
+                label="Allowed uses"
+                :options="allowedUseOptions"
+                class="mt-4"
+            />
             <div class="mt-4">
-                <button
-                    type="button"
-                    class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                <BaseButton
                     :disabled="uploadForm.processing"
                     @click="submitUpload"
                 >
                     Upload audio
-                </button>
+                </BaseButton>
             </div>
-            <p v-if="uploadForm.errors.audio_file" class="mt-2 text-sm text-red-600">
-                {{ uploadForm.errors.audio_file }}
-            </p>
-            <p v-else-if="firstUploadError" class="mt-2 text-sm text-red-600">
-                {{ firstUploadError }}
-            </p>
+            <div class="mt-2">
+                <FieldError :error="uploadForm.errors.audio_file || firstUploadError" />
+            </div>
         </section>
 
         <section v-if="blockedAssets.length > 0" class="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-5 shadow-sm">
@@ -647,7 +612,7 @@ function formatDuration(ms) {
                     <p v-if="asset.licence?.attribution" class="mt-2 text-sm text-gray-600">
                         Required attribution: <span class="font-medium text-gray-900">{{ asset.licence.attribution }}</span>
                     </p>
-                                        <div class="mt-3 flex flex-wrap items-center gap-3">
+                    <div class="mt-3 flex flex-wrap items-center gap-3">
                         <button
                             type="button"
                             class="text-sm font-medium text-indigo-600 hover:text-indigo-800"
@@ -670,122 +635,74 @@ function formatDuration(ms) {
                         @submit.prevent="saveLicence(asset)"
                     >
                         <div class="grid gap-3 md:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-source-name-'+asset.id">Source name</label>
-                                <input
-                                    :id="'licence-source-name-'+asset.id"
-                                    v-model="licenceForm.source_name"
-                                    type="text"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-source-url-'+asset.id">Source URL</label>
-                                <input
-                                    :id="'licence-source-url-'+asset.id"
-                                    v-model="licenceForm.source_url"
-                                    type="url"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-type-'+asset.id">Licence type</label>
-                                <input
-                                    :id="'licence-type-'+asset.id"
-                                    v-model="licenceForm.licence_type"
-                                    type="text"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-url-'+asset.id">Licence URL</label>
-                                <input
-                                    :id="'licence-url-'+asset.id"
-                                    v-model="licenceForm.licence_url"
-                                    type="url"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
+                            <TextInput
+                                :id="'licence-source-name-'+asset.id"
+                                v-model="licenceForm.source_name"
+                                type="text"
+                                label="Source name"
+                            />
+                            <TextInput
+                                :id="'licence-source-url-'+asset.id"
+                                v-model="licenceForm.source_url"
+                                type="url"
+                                label="Source URL"
+                            />
+                            <TextInput
+                                :id="'licence-type-'+asset.id"
+                                v-model="licenceForm.licence_type"
+                                type="text"
+                                label="Licence type"
+                            />
+                            <TextInput
+                                :id="'licence-url-'+asset.id"
+                                v-model="licenceForm.licence_url"
+                                type="url"
+                                label="Licence URL"
+                            />
                         </div>
                         <div class="grid gap-3 md:grid-cols-2">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-attribution-'+asset.id">Required attribution</label>
-                                <input
-                                    :id="'licence-attribution-'+asset.id"
-                                    v-model="licenceForm.attribution"
-                                    type="text"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700" :for="'licence-notes-'+asset.id">Notes</label>
-                                <input
-                                    :id="'licence-notes-'+asset.id"
-                                    v-model="licenceForm.notes"
-                                    type="text"
-                                    class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                />
-                            </div>
-                        </div>
-                        <fieldset>
-                            <legend class="text-sm font-medium text-gray-700">Allowed uses</legend>
-                            <div class="mt-2 flex flex-wrap gap-4">
-                                <label
-                                    v-for="option in allowedUseOptions"
-                                    :key="option.value"
-                                    class="flex items-center gap-2 text-sm text-gray-700"
-                                >
-                                    <input
-                                        v-model="licenceForm.allowed_uses"
-                                        type="checkbox"
-                                        :value="option.value"
-                                        class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    {{ option.label }}
-                                </label>
-                            </div>
-                        </fieldset>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700" :for="'licence-evidence-'+asset.id">
-                                Evidence (one entry per line: quotes/links supporting the licence claim)
-                            </label>
-                            <textarea
-                                :id="'licence-evidence-'+asset.id"
-                                v-model="licenceForm.evidence"
-                                rows="3"
-                                class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            <TextInput
+                                :id="'licence-attribution-'+asset.id"
+                                v-model="licenceForm.attribution"
+                                type="text"
+                                label="Required attribution"
+                            />
+                            <TextInput
+                                :id="'licence-notes-'+asset.id"
+                                v-model="licenceForm.notes"
+                                type="text"
+                                label="Notes"
                             />
                         </div>
-                        <label class="flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                                v-model="licenceForm.licence_verified"
-                                type="checkbox"
-                                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
+                        <CheckboxGroup
+                            v-model="licenceForm.allowed_uses"
+                            label="Allowed uses"
+                            :options="allowedUseOptions"
+                        />
+                        <TextArea
+                            :id="'licence-evidence-'+asset.id"
+                            v-model="licenceForm.evidence"
+                            label="Evidence (one entry per line: quotes/links supporting the licence claim)"
+                            rows="3"
+                        />
+                        <CheckboxInput v-model="licenceForm.licence_verified">
                             Licence verified (requires recorded evidence and the allowed uses above)
-                        </label>
-                        <div class="flex items-center gap-3">
-                            <button
+                        </CheckboxInput>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <BaseButton
                                 type="submit"
-                                class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                                 :disabled="licenceForm.processing"
                             >
                                 Save licence
-                            </button>
-                            <button
-                                type="button"
-                                class="text-sm font-medium text-gray-600 hover:text-gray-900"
+                            </BaseButton>
+                            <BaseButton
+                                variant="ghost"
                                 @click="editingLicenceId = null"
                             >
                                 Cancel
-                            </button>
+                            </BaseButton>
                         </div>
-                        <p v-if="licenceForm.errors.licence_verified" class="text-sm text-red-600">
-                            {{ licenceForm.errors.licence_verified }}
-                        </p>
-                        <p v-else-if="firstLicenceError" class="text-sm text-red-600">
-                            {{ firstLicenceError }}
-                        </p>
+                        <FieldError :error="licenceForm.errors.licence_verified || firstLicenceError" />
                     </form>
                 </li>
             </ul>

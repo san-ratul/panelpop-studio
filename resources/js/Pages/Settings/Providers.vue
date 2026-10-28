@@ -2,6 +2,11 @@
 import { Link, useForm } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import BaseButton from '@/Components/Form/BaseButton.vue';
+import CheckboxInput from '@/Components/Form/CheckboxInput.vue';
+import FieldError from '@/Components/Form/FieldError.vue';
+import SelectInput from '@/Components/Form/SelectInput.vue';
+import TextInput from '@/Components/Form/TextInput.vue';
 
 const props = defineProps({
     authUser: {
@@ -126,176 +131,98 @@ function destroy(setting) {
             >
                 <h2 class="text-lg font-medium text-gray-900">Add provider setting</h2>
 
-                <div>
-                    <label
-                        for="capability"
-                        class="block text-sm font-medium text-gray-900"
-                    >Capability</label>
-                    <select
-                        id="capability"
-                        v-model="form.capability"
-                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        @change="onCapabilityChange"
+                <SelectInput
+                    id="capability"
+                    v-model="form.capability"
+                    label="Capability"
+                    :error="form.errors.capability"
+                    @change="onCapabilityChange"
+                >
+                    <option
+                        v-for="capability in capabilities"
+                        :key="capability.value"
+                        :value="capability.value"
                     >
-                        <option
-                            v-for="capability in capabilities"
-                            :key="capability.value"
-                            :value="capability.value"
-                        >
-                            {{ capability.label }}
-                        </option>
-                    </select>
-                    <p
-                        v-if="form.errors.capability"
-                        class="mt-2 text-sm text-red-600"
-                    >
-                        {{ form.errors.capability }}
-                    </p>
-                </div>
+                        {{ capability.label }}
+                    </option>
+                </SelectInput>
 
-                <div>
-                    <label
-                        for="provider"
-                        class="block text-sm font-medium text-gray-900"
-                    >Provider</label>
-                    <select
-                        id="provider"
-                        v-model="form.provider"
-                        required
-                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
+                <SelectInput
+                    id="provider"
+                    v-model="form.provider"
+                    label="Provider"
+                    required
+                    :error="form.errors.provider"
+                >
+                    <option
+                        v-for="provider in availableProviders"
+                        :key="provider.value"
+                        :value="provider.value"
                     >
-                        <option
-                            v-for="provider in availableProviders"
-                            :key="provider.value"
-                            :value="provider.value"
-                        >
-                            {{ provider.label }}
-                        </option>
-                    </select>
-                    <p
-                        v-if="form.errors.provider"
-                        class="mt-2 text-sm text-red-600"
-                    >
-                        {{ form.errors.provider }}
-                    </p>
-                </div>
+                        {{ provider.label }}
+                    </option>
+                </SelectInput>
 
-                <div>
-                    <label
-                        for="label"
-                        class="block text-sm font-medium text-gray-900"
-                    >Label</label>
-                    <input
-                        id="label"
-                        v-model="form.label"
-                        type="text"
-                        required
-                        maxlength="120"
-                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                    >
-                    <p
-                        v-if="form.errors.label"
-                        class="mt-2 text-sm text-red-600"
-                    >
-                        {{ form.errors.label }}
-                    </p>
-                </div>
+                <TextInput
+                    id="label"
+                    v-model="form.label"
+                    type="text"
+                    label="Label"
+                    required
+                    maxlength="120"
+                    :error="form.errors.label"
+                />
 
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                        <label
-                            for="model"
-                            class="block text-sm font-medium text-gray-900"
-                        >Model</label>
-                        <input
-                            id="model"
-                            v-model="form.model"
-                            type="text"
-                            maxlength="120"
-                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                    </div>
-                    <div>
-                        <label
-                            for="timeout_seconds"
-                            class="block text-sm font-medium text-gray-900"
-                        >Timeout (s)</label>
-                        <input
-                            id="timeout_seconds"
-                            v-model="form.timeout_seconds"
-                            type="number"
-                            min="5"
-                            max="600"
-                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                    </div>
-                    <div>
-                        <label
-                            for="base_url"
-                            class="block text-sm font-medium text-gray-900"
-                        >Base URL</label>
-                        <input
-                            id="base_url"
-                            v-model="form.base_url"
-                            type="url"
-                            maxlength="255"
-                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                    </div>
+                    <TextInput
+                        id="model"
+                        v-model="form.model"
+                        type="text"
+                        label="Model"
+                        maxlength="120"
+                    />
+                    <TextInput
+                        id="timeout_seconds"
+                        v-model="form.timeout_seconds"
+                        type="number"
+                        label="Timeout (s)"
+                        min="5"
+                        max="600"
+                    />
+                    <TextInput
+                        id="base_url"
+                        v-model="form.base_url"
+                        type="url"
+                        label="Base URL"
+                        maxlength="255"
+                    />
                 </div>
-                <p
-                    v-if="form.errors.config"
-                    class="text-sm text-red-600"
-                >
-                    {{ form.errors.config }}
-                </p>
+                <FieldError :error="form.errors.config" />
 
-                <div>
-                    <label
-                        for="credentials"
-                        class="block text-sm font-medium text-gray-900"
-                    >API key (write-only)</label>
-                    <input
-                        id="credentials"
-                        v-model="form.credentials"
-                        type="password"
-                        autocomplete="off"
-                        class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                    >
-                    <p
-                        v-if="form.errors.credentials"
-                        class="mt-2 text-sm text-red-600"
-                    >
-                        {{ form.errors.credentials }}
-                    </p>
-                </div>
+                <TextInput
+                    id="credentials"
+                    v-model="form.credentials"
+                    type="password"
+                    label="API key (write-only)"
+                    autocomplete="off"
+                    :error="form.errors.credentials"
+                />
 
-                <div class="flex gap-6">
-                    <label class="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                            v-model="form.is_default"
-                            type="checkbox"
-                            class="h-4 w-4 accent-indigo-600"
-                        >
+                <div class="flex flex-wrap gap-6">
+                    <CheckboxInput v-model="form.is_default">
                         Default for capability
-                    </label>
-                    <label class="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                            v-model="form.is_active"
-                            type="checkbox"
-                            class="h-4 w-4 accent-indigo-600"
-                        >
+                    </CheckboxInput>
+                    <CheckboxInput v-model="form.is_active">
                         Active
-                    </label>
+                    </CheckboxInput>
                 </div>
 
-                <button
+                <BaseButton
                     type="submit"
                     :disabled="form.processing"
-                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Save provider setting
-                </button>
+                </BaseButton>
             </form>
 
             <div class="space-y-4">
@@ -336,25 +263,25 @@ function destroy(setting) {
                                 {{ setting.has_credentials ? 'API key saved (hidden)' : 'No key stored (env is used)' }}
                             </p>
                         </div>
-                        <div class="flex shrink-0 flex-col items-end gap-1">
+                        <div class="flex shrink-0 flex-col items-end gap-1.5">
                             <button
                                 v-if="! setting.is_default"
                                 type="button"
-                                class="text-xs text-indigo-600 hover:text-indigo-800"
+                                class="text-sm font-medium text-indigo-600 hover:text-indigo-800"
                                 @click="makeDefault(setting)"
                             >
                                 Make default
                             </button>
                             <button
                                 type="button"
-                                class="text-xs text-gray-600 hover:text-gray-900"
+                                class="text-sm font-medium text-gray-600 hover:text-gray-900"
                                 @click="toggleActive(setting)"
                             >
                                 {{ setting.is_active ? 'Deactivate' : 'Activate' }}
                             </button>
                             <button
                                 type="button"
-                                class="text-xs text-red-600 hover:text-red-800"
+                                class="text-sm font-medium text-red-600 hover:text-red-800"
                                 @click="destroy(setting)"
                             >
                                 Delete

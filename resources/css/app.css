@@ -7,3 +7,70 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/*
+ * Form control design system (single source of truth for field styling).
+ * The shared Vue components in resources/js/Components/Form/ apply these
+ * classes; do not restyle native controls with bare element selectors.
+ */
+@layer components {
+    /* Field label (legend text uses the same tokens via .field-label). */
+    .field-label {
+        @apply block text-sm font-medium text-gray-900;
+    }
+
+    /* Shared text-entry control: text/email/password/number/url/search. */
+    .field-control {
+        @apply block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition
+            placeholder:text-gray-400
+            hover:enabled:border-gray-400
+            focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25
+            disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500;
+    }
+
+    /* Multi-line variant: comfortable line height, vertical resize only. */
+    .field-control--textarea {
+        @apply py-3 leading-6 resize-y;
+    }
+
+    /* Select variant: custom chevron, native dropdown behaviour preserved. */
+    .field-control--select {
+        @apply cursor-pointer pr-10;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+        background-position: right 0.75rem center;
+        background-repeat: no-repeat;
+        background-size: 1.125rem 1.125rem;
+    }
+
+    /* Native file input with an app-styled choose-file button. */
+    .field-control--file {
+        @apply block w-full min-w-0 cursor-pointer text-sm text-gray-500
+            file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3.5 file:py-2 file:text-sm file:font-semibold file:text-indigo-700
+            transition hover:file:bg-indigo-100
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/25
+            disabled:cursor-not-allowed disabled:opacity-50;
+    }
+
+    /* Native checkbox/radio: fixed size, brand accent, visible keyboard focus. */
+    .field-checkbox {
+        @apply mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-indigo-600
+            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600
+            disabled:cursor-not-allowed disabled:opacity-50;
+    }
+
+    /* Clickable checkbox/radio label row. */
+    .field-check-label {
+        @apply flex items-start gap-2 text-sm font-normal text-gray-700;
+    }
+
+    /* Helper text below a control. */
+    .field-hint {
+        @apply mt-2 text-xs text-gray-500;
+    }
+
+    /* Validation message below a control (icon + text, not colour alone). */
+    .field-error {
+        @apply mt-2 flex items-start gap-1.5 text-sm text-red-600;
+    }
+}

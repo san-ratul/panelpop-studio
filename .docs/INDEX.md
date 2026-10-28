@@ -45,6 +45,7 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 | [REQUIREMENTS.md](REQUIREMENTS.md) | You need detailed functional/non-functional requirements |
 | [MVP_SCOPE.md](MVP_SCOPE.md) | You must decide what is in/out of scope |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | You touch structure, jobs, queue, storage, layering |
+| [FRONTEND_UI.md](FRONTEND_UI.md) | You touch forms, controls, or buttons in Vue pages |
 | [DATABASE_DESIGN.md](DATABASE_DESIGN.md) | You create migrations/models (PROPOSED schema) |
 | [PROVIDER_INTEGRATION.md](PROVIDER_INTEGRATION.md) | You work on AI provider code or credentials |
 | [VIDEO_RENDERING.md](VIDEO_RENDERING.md) | You work on FFmpeg pipeline, thumbnails, SRT |

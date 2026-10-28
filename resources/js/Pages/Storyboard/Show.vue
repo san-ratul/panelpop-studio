@@ -3,6 +3,9 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AddDialogueLine from '@/Components/AddDialogueLine.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import BaseButton from '@/Components/Form/BaseButton.vue';
+import TextArea from '@/Components/Form/TextArea.vue';
+import TextInput from '@/Components/Form/TextInput.vue';
 
 const props = defineProps({
     authUser: {
@@ -192,7 +195,7 @@ if (anyJobActive.value) {
 
 <template>
     <AppLayout :auth-user="authUser">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Storyboard</h1>
                 <p class="mt-1 text-sm text-gray-600">
@@ -200,7 +203,7 @@ if (anyJobActive.value) {
                     {{ Number(durationTotal).toFixed(2) }} s (± {{ toleranceSeconds }} s tolerance)
                 </p>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center justify-end gap-3">
                 <Link
                     :href="route('story.edit', project.id)"
                     class="text-sm text-indigo-600 hover:text-indigo-800"
@@ -213,32 +216,28 @@ if (anyJobActive.value) {
                 >
                     Render
                 </Link>
-                <button
-                    type="button"
+                <BaseButton
+                    variant="outline"
                     :disabled="planForm.processing || planJobActive || !hasReadyStory"
                     :title="hasReadyStory ? '' : 'Generate or save a ready story first'"
-                    class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="generatePlan"
                 >
                     {{ planJobActive ? 'Planning…' : 'Generate scene plan with AI' }}
-                </button>
-                <button
-                    type="button"
+                </BaseButton>
+                <BaseButton
+                    variant="outline"
                     :disabled="imageForm.processing || imageJobActive || referenceJobActive || scenes.length === 0"
                     :title="scenes.length === 0 ? 'Generate or add a scene plan first' : ''"
-                    class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="generateImages"
                 >
                     {{ imageJobActive || referenceJobActive ? 'Generating images…' : 'Generate scene images' }}
-                </button>
-                <button
-                    type="button"
+                </BaseButton>
+                <BaseButton
                     :disabled="completeForm.processing"
-                    class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     @click="completeStoryboard"
                 >
                     Complete storyboard
-                </button>
+                </BaseButton>
             </div>
         </div>
 
@@ -469,94 +468,50 @@ if (anyJobActive.value) {
 
                 <form
                     v-if="editingSceneId === scene.id"
-                    class="mt-4 space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4"
+                    class="mt-4 space-y-4 rounded-md border border-gray-200 bg-gray-50 p-4"
                     @submit.prevent="submitEditScene"
                 >
-                    <div>
-                        <label
-                            :for="`duration-${scene.id}`"
-                            class="block text-sm font-medium text-gray-900"
-                        >Duration (seconds, 0.5–120)</label>
-                        <input
-                            :id="`duration-${scene.id}`"
-                            v-model.number="editSceneForm.duration_seconds"
-                            type="number"
-                            step="0.5"
-                            min="0.5"
-                            max="120"
-                            required
-                            class="mt-1.5 block w-40 rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                        <p
-                            v-if="editSceneForm.errors.duration_seconds"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ editSceneForm.errors.duration_seconds }}
-                        </p>
-                    </div>
-                    <div>
-                        <label
-                            :for="`background-${scene.id}`"
-                            class="block text-sm font-medium text-gray-900"
-                        >Background description</label>
-                        <textarea
-                            :id="`background-${scene.id}`"
-                            v-model="editSceneForm.background_description"
-                            rows="2"
-                            required
-                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        />
-                        <p
-                            v-if="editSceneForm.errors.background_description"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ editSceneForm.errors.background_description }}
-                        </p>
-                    </div>
-                    <div>
-                        <label
-                            :for="`prompt-${scene.id}`"
-                            class="block text-sm font-medium text-gray-900"
-                        >Image prompt</label>
-                        <textarea
-                            :id="`prompt-${scene.id}`"
-                            v-model="editSceneForm.image_prompt"
-                            rows="2"
-                            required
-                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        />
-                        <p
-                            v-if="editSceneForm.errors.image_prompt"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ editSceneForm.errors.image_prompt }}
-                        </p>
-                    </div>
-                    <div>
-                        <label
-                            :for="`narration-${scene.id}`"
-                            class="block text-sm font-medium text-gray-900"
-                        >Narration text</label>
-                        <textarea
-                            :id="`narration-${scene.id}`"
-                            v-model="editSceneForm.narration_text"
-                            rows="2"
-                            class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        />
-                        <p
-                            v-if="editSceneForm.errors.narration_text"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ editSceneForm.errors.narration_text }}
-                        </p>
-                    </div>
-                    <button
+                    <TextInput
+                        :id="`duration-${scene.id}`"
+                        v-model.number="editSceneForm.duration_seconds"
+                        type="number"
+                        label="Duration (seconds, 0.5–120)"
+                        required
+                        step="0.5"
+                        min="0.5"
+                        max="120"
+                        class="w-full sm:w-40"
+                        :error="editSceneForm.errors.duration_seconds"
+                    />
+                    <TextArea
+                        :id="`background-${scene.id}`"
+                        v-model="editSceneForm.background_description"
+                        label="Background description"
+                        rows="2"
+                        required
+                        :error="editSceneForm.errors.background_description"
+                    />
+                    <TextArea
+                        :id="`prompt-${scene.id}`"
+                        v-model="editSceneForm.image_prompt"
+                        label="Image prompt"
+                        rows="2"
+                        required
+                        :error="editSceneForm.errors.image_prompt"
+                    />
+                    <TextArea
+                        :id="`narration-${scene.id}`"
+                        v-model="editSceneForm.narration_text"
+                        label="Narration text"
+                        rows="2"
+                        :error="editSceneForm.errors.narration_text"
+                    />
+                    <BaseButton
                         type="submit"
                         :disabled="editSceneForm.processing"
-                        class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Save scene
-                    </button>
+                    </BaseButton>
                 </form>
 
                 <div class="mt-4 border-t border-gray-100 pt-3">
@@ -598,97 +553,53 @@ if (anyJobActive.value) {
         </div>
 
         <form
-            class="mt-6 max-w-2xl space-y-3 rounded-lg border border-gray-200 bg-white p-5"
+            class="mt-6 max-w-2xl space-y-4 rounded-lg border border-gray-200 bg-white p-5"
             @submit.prevent="submitAddScene"
         >
             <h2 class="font-semibold text-gray-900">
                 Add scene
             </h2>
-            <div>
-                <label
-                    for="add-duration"
-                    class="block text-sm font-medium text-gray-900"
-                >Duration (seconds, 0.5–120)</label>
-                <input
-                    id="add-duration"
-                    v-model.number="addSceneForm.duration_seconds"
-                    type="number"
-                    step="0.5"
-                    min="0.5"
-                    max="120"
-                    required
-                    class="mt-1.5 block w-40 rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                >
-                <p
-                    v-if="addSceneForm.errors.duration_seconds"
-                    class="mt-2 text-sm text-red-600"
-                >
-                    {{ addSceneForm.errors.duration_seconds }}
-                </p>
-            </div>
-            <div>
-                <label
-                    for="add-background"
-                    class="block text-sm font-medium text-gray-900"
-                >Background description</label>
-                <textarea
-                    id="add-background"
-                    v-model="addSceneForm.background_description"
-                    rows="2"
-                    required
-                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                />
-                <p
-                    v-if="addSceneForm.errors.background_description"
-                    class="mt-2 text-sm text-red-600"
-                >
-                    {{ addSceneForm.errors.background_description }}
-                </p>
-            </div>
-            <div>
-                <label
-                    for="add-prompt"
-                    class="block text-sm font-medium text-gray-900"
-                >Image prompt</label>
-                <textarea
-                    id="add-prompt"
-                    v-model="addSceneForm.image_prompt"
-                    rows="2"
-                    required
-                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                />
-                <p
-                    v-if="addSceneForm.errors.image_prompt"
-                    class="mt-2 text-sm text-red-600"
-                >
-                    {{ addSceneForm.errors.image_prompt }}
-                </p>
-            </div>
-            <div>
-                <label
-                    for="add-narration"
-                    class="block text-sm font-medium text-gray-900"
-                >Narration text</label>
-                <textarea
-                    id="add-narration"
-                    v-model="addSceneForm.narration_text"
-                    rows="2"
-                    class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                />
-                <p
-                    v-if="addSceneForm.errors.narration_text"
-                    class="mt-2 text-sm text-red-600"
-                >
-                    {{ addSceneForm.errors.narration_text }}
-                </p>
-            </div>
-            <button
+            <TextInput
+                id="add-duration"
+                v-model.number="addSceneForm.duration_seconds"
+                type="number"
+                label="Duration (seconds, 0.5–120)"
+                required
+                step="0.5"
+                min="0.5"
+                max="120"
+                class="w-full sm:w-40"
+                :error="addSceneForm.errors.duration_seconds"
+            />
+            <TextArea
+                id="add-background"
+                v-model="addSceneForm.background_description"
+                label="Background description"
+                rows="2"
+                required
+                :error="addSceneForm.errors.background_description"
+            />
+            <TextArea
+                id="add-prompt"
+                v-model="addSceneForm.image_prompt"
+                label="Image prompt"
+                rows="2"
+                required
+                :error="addSceneForm.errors.image_prompt"
+            />
+            <TextArea
+                id="add-narration"
+                v-model="addSceneForm.narration_text"
+                label="Narration text"
+                rows="2"
+                :error="addSceneForm.errors.narration_text"
+            />
+            <BaseButton
                 type="submit"
                 :disabled="addSceneForm.processing"
-                class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
                 Add scene
-            </button>
+            </BaseButton>
         </form>
     </AppLayout>
 </template>

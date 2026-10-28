@@ -2,6 +2,8 @@
 import { useForm, usePage } from '@inertiajs/vue3';
 import { computed, reactive } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import BaseButton from '@/Components/Form/BaseButton.vue';
+import TextInput from '@/Components/Form/TextInput.vue';
 
 const page = usePage();
 
@@ -70,25 +72,19 @@ function submit() {
                     class="mt-4 space-y-4"
                     @submit.prevent="submit"
                 >
-                    <div>
-                        <label
-                            for="current_password"
-                            class="block text-sm font-medium text-gray-900"
-                        >
-                            Current password
-                        </label>
-                        <div class="relative mt-1.5">
-                            <input
-                                id="current_password"
-                                v-model="form.current_password"
-                                :type="visibility.current ? 'text' : 'password'"
-                                required
-                                autocomplete="current-password"
-                                class="block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                            >
+                    <TextInput
+                        id="current_password"
+                        v-model="form.current_password"
+                        label="Current password"
+                        required
+                        autocomplete="current-password"
+                        :type="visibility.current ? 'text' : 'password'"
+                        :error="form.errors.current_password"
+                    >
+                        <template #trailing>
                             <button
                                 type="button"
-                                class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                                class="flex h-full w-full items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600"
                                 :aria-label="visibility.current ? 'Hide current password' : 'Show current password'"
                                 :aria-pressed="visibility.current"
                                 @click="toggleVisibility('current')"
@@ -131,35 +127,25 @@ function submit() {
                                     />
                                 </svg>
                             </button>
-                        </div>
-                        <p
-                            v-if="form.errors.current_password"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.current_password }}
-                        </p>
-                    </div>
+                        </template>
+                    </TextInput>
 
-                    <div>
-                        <label
-                            for="password"
-                            class="block text-sm font-medium text-gray-900"
-                        >
+                    <TextInput
+                        id="password"
+                        v-model="form.password"
+                        required
+                        autocomplete="new-password"
+                        :type="visibility.next ? 'text' : 'password'"
+                        :error="form.errors.password"
+                    >
+                        <template #label>
                             New password
                             <span class="font-normal text-gray-500">(min. 8 characters)</span>
-                        </label>
-                        <div class="relative mt-1.5">
-                            <input
-                                id="password"
-                                v-model="form.password"
-                                :type="visibility.next ? 'text' : 'password'"
-                                required
-                                autocomplete="new-password"
-                                class="block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                            >
+                        </template>
+                        <template #trailing>
                             <button
                                 type="button"
-                                class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                                class="flex h-full w-full items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600"
                                 :aria-label="visibility.next ? 'Hide new password' : 'Show new password'"
                                 :aria-pressed="visibility.next"
                                 @click="toggleVisibility('next')"
@@ -202,34 +188,22 @@ function submit() {
                                     />
                                 </svg>
                             </button>
-                        </div>
-                        <p
-                            v-if="form.errors.password"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.password }}
-                        </p>
-                    </div>
+                        </template>
+                    </TextInput>
 
-                    <div>
-                        <label
-                            for="password_confirmation"
-                            class="block text-sm font-medium text-gray-900"
-                        >
-                            Confirm new password
-                        </label>
-                        <div class="relative mt-1.5">
-                            <input
-                                id="password_confirmation"
-                                v-model="form.password_confirmation"
-                                :type="visibility.confirm ? 'text' : 'password'"
-                                required
-                                autocomplete="new-password"
-                                class="block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-gray-900 shadow-xs transition hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                            >
+                    <TextInput
+                        id="password_confirmation"
+                        v-model="form.password_confirmation"
+                        label="Confirm new password"
+                        required
+                        autocomplete="new-password"
+                        :type="visibility.confirm ? 'text' : 'password'"
+                        :error="form.errors.password_confirmation"
+                    >
+                        <template #trailing>
                             <button
                                 type="button"
-                                class="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                                class="flex h-full w-full items-center justify-center text-gray-400 transition hover:text-gray-600 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600"
                                 :aria-label="visibility.confirm ? 'Hide password confirmation' : 'Show password confirmation'"
                                 :aria-pressed="visibility.confirm"
                                 @click="toggleVisibility('confirm')"
@@ -272,23 +246,16 @@ function submit() {
                                     />
                                 </svg>
                             </button>
-                        </div>
-                        <p
-                            v-if="form.errors.password_confirmation"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.password_confirmation }}
-                        </p>
-                    </div>
+                        </template>
+                    </TextInput>
 
                     <div class="flex flex-wrap items-center gap-3">
-                        <button
+                        <BaseButton
                             type="submit"
                             :disabled="form.processing"
-                            class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {{ form.processing ? 'Updating…' : 'Update password' }}
-                        </button>
+                        </BaseButton>
                     </div>
                 </form>
             </section>

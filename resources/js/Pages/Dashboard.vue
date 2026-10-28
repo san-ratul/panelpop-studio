@@ -2,6 +2,7 @@
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import { buttonVariants } from '@/Components/Form/buttonVariants.js';
 
 const props = defineProps({
     authUser: {
@@ -59,7 +60,7 @@ function formatDate(iso) {
             </div>
             <Link
                 :href="route('projects.create')"
-                class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                :class="buttonVariants({ variant: 'primary' })"
             >
                 New project
             </Link>
@@ -97,7 +98,8 @@ function formatDate(iso) {
             </p>
             <Link
                 :href="route('projects.create')"
-                class="mt-6 inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                :class="buttonVariants({ variant: 'primary' })"
+                class="mt-6"
             >
                 New project
             </Link>

@@ -2,6 +2,11 @@
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import BaseButton from '@/Components/Form/BaseButton.vue';
+import FieldError from '@/Components/Form/FieldError.vue';
+import TextArea from '@/Components/Form/TextArea.vue';
+import TextInput from '@/Components/Form/TextInput.vue';
+import { buttonVariants } from '@/Components/Form/buttonVariants.js';
 
 const props = defineProps({
     authUser: {
@@ -164,7 +169,7 @@ if (props.storyJobActive || props.planJobActive) {
                 </div>
                 <Link
                     :href="route('storyboard.show', project.id)"
-                    class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                    :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Open storyboard
                 </Link>
@@ -191,14 +196,7 @@ if (props.storyJobActive || props.planJobActive) {
                     class="mt-4"
                     @submit.prevent="generate"
                 >
-                    <label
-                        for="story_idea"
-                        class="block text-sm font-medium text-gray-900"
-                    >
-                        Story idea
-                        <span class="font-normal text-gray-500">(10–5000 characters)</span>
-                    </label>
-                    <textarea
+                    <TextArea
                         id="story_idea"
                         v-model="generateForm.story_idea"
                         rows="4"
@@ -206,37 +204,28 @@ if (props.storyJobActive || props.planJobActive) {
                         minlength="10"
                         maxlength="5000"
                         :disabled="generationBusy"
-                        class="mt-1.5 block w-full resize-y rounded-lg border border-gray-300 bg-white px-3.5 py-3 text-sm leading-6 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
+                        :error="generateForm.errors.story_idea"
+                        :description="generateForm.errors.story_idea ? '' : `${generateForm.story_idea.length} / 5000 characters`"
                         placeholder="A shy cleaning robot discovers it can paint, and one night its paintings come alive."
-                    />
-                    <div class="mt-2 flex items-center justify-between gap-3">
-                        <p
-                            v-if="generateForm.errors.story_idea"
-                            class="text-sm text-red-600"
-                        >
-                            {{ generateForm.errors.story_idea }}
-                        </p>
-                        <p
-                            v-else
-                            class="text-xs text-gray-500"
-                        >
-                            {{ generateForm.story_idea.length }} / 5000 characters
-                        </p>
-                    </div>
+                    >
+                        <template #label>
+                            Story idea
+                            <span class="font-normal text-gray-500">(10–5000 characters)</span>
+                        </template>
+                    </TextArea>
 
                     <div class="mt-3 flex flex-wrap items-center gap-3">
-                        <button
+                        <BaseButton
                             type="submit"
                             :disabled="generationBusy"
-                            class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <span
                                 v-if="generationBusy"
-                                class="mr-2 h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                                class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
                                 aria-hidden="true"
                             />
                             {{ generationBusy ? 'Generating…' : 'Generate Story' }}
-                        </button>
+                        </BaseButton>
                         <p
                             v-if="generationBusy"
                             class="text-sm text-gray-500"
@@ -341,86 +330,53 @@ if (props.storyJobActive || props.planJobActive) {
                     class="mt-4 space-y-4"
                     @submit.prevent="submit"
                 >
-                    <div>
-                        <label
-                            for="story-title"
-                            class="block text-sm font-medium text-gray-900"
-                        >
+                    <TextInput
+                        id="story-title"
+                        v-model="form.title"
+                        type="text"
+                        required
+                        maxlength="255"
+                        placeholder="e.g. The Brave Little Robot"
+                        :error="form.errors.title"
+                    >
+                        <template #label>
                             Title
                             <span class="font-normal text-gray-500">(max 255 characters)</span>
-                        </label>
-                        <input
-                            id="story-title"
-                            v-model="form.title"
-                            type="text"
-                            required
-                            maxlength="255"
-                            placeholder="e.g. The Brave Little Robot"
-                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                        <p
-                            v-if="form.errors.title"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.title }}
-                        </p>
-                    </div>
+                        </template>
+                    </TextInput>
 
-                    <div>
-                        <label
-                            for="logline"
-                            class="block text-sm font-medium text-gray-900"
-                        >
+                    <TextInput
+                        id="logline"
+                        v-model="form.logline"
+                        type="text"
+                        maxlength="500"
+                        placeholder="One sentence that makes someone want to watch."
+                        :error="form.errors.logline"
+                    >
+                        <template #label>
                             Logline
                             <span class="font-normal text-gray-500">(one sentence, max 500 characters)</span>
-                        </label>
-                        <input
-                            id="logline"
-                            v-model="form.logline"
-                            type="text"
-                            maxlength="500"
-                            placeholder="One sentence that makes someone want to watch."
-                            class="mt-1.5 block w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        >
-                        <p
-                            v-if="form.errors.logline"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.logline }}
-                        </p>
-                    </div>
+                        </template>
+                    </TextInput>
 
-                    <div>
-                        <label
-                            for="full_text"
-                            class="block text-sm font-medium text-gray-900"
-                        >
-                            Full story text
-                        </label>
-                        <textarea
-                            id="full_text"
-                            v-model="form.full_text"
-                            rows="16"
-                            required
-                            placeholder="Once upon a time…"
-                            class="mt-1.5 block w-full min-h-64 resize-y rounded-lg border border-gray-300 bg-white px-4 py-4 text-[15px] leading-7 text-gray-900 shadow-xs transition placeholder:text-gray-400 hover:enabled:border-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/25"
-                        />
-                        <p
-                            v-if="form.errors.full_text"
-                            class="mt-2 text-sm text-red-600"
-                        >
-                            {{ form.errors.full_text }}
-                        </p>
-                    </div>
+                    <TextArea
+                        id="full_text"
+                        v-model="form.full_text"
+                        rows="16"
+                        required
+                        class="min-h-64"
+                        placeholder="Once upon a time…"
+                        :error="form.errors.full_text"
+                        label="Full story text"
+                    />
 
                     <div class="flex flex-wrap items-center gap-3">
-                        <button
+                        <BaseButton
                             type="submit"
                             :disabled="form.processing"
-                            class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {{ form.processing ? 'Saving…' : 'Save Story' }}
-                        </button>
+                        </BaseButton>
                         <span
                             v-if="form.recentlySuccessful"
                             class="text-sm font-medium text-emerald-600"
@@ -454,27 +410,21 @@ if (props.storyJobActive || props.planJobActive) {
                     where scene durations must total {{ project.target_duration_seconds }} s (±2 s) before completion.
                 </p>
                 <div class="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
+                    <BaseButton
+                        variant="outline"
                         :disabled="planForm.processing || planJobActive || !hasReadyStory"
                         :title="hasReadyStory ? '' : 'Save a story first — scene planning needs a ready story.'"
-                        class="inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:cursor-not-allowed disabled:opacity-50"
                         @click="generatePlan"
                     >
                         {{ planBusy ? 'Planning…' : 'Generate Scene Plan' }}
-                    </button>
+                    </BaseButton>
                     <p
                         v-if="!hasReadyStory"
                         class="text-sm text-gray-500"
                     >
                         Available after the story is ready.
                     </p>
-                    <p
-                        v-if="planForm.errors.plan"
-                        class="text-sm text-red-600"
-                    >
-                        {{ planForm.errors.plan }}
-                    </p>
+                    <FieldError :error="planForm.errors.plan" />
                 </div>
             </section>
         </div>
