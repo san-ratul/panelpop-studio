@@ -144,7 +144,7 @@ class ProviderCallAccountingTest extends TestCase
         $this->assertSame(CostType::Actual, $call->cost_type);
         $this->assertSame(ChargeStatus::Confirmed, $call->charge_status);
         $this->assertSame('measured_usage_x_list_rates', $call->calculation_method);
-        $this->assertSame('openai-text-2026-10-28', $call->rate_version);
+        $this->assertSame('openai-text-2026-10-29', $call->rate_version);
         $this->assertSame('resp_story_1', $call->provider_request_id);
         $this->assertSame(123, $call->input_tokens);
         $this->assertSame(456, $call->output_tokens);

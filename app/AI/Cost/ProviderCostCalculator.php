@@ -73,7 +73,11 @@ final class ProviderCostCalculator
     }
 
     /**
-     * Text: usage.input_tokens × input + usage.output_tokens × output.
+     * Text: usage.input_tokens × input + usage.output_tokens × output. The
+     * provider-reported cached-token share (input_tokens_details.cached_tokens,
+     * a SUBSET of input_tokens) is priced at the documented cached-input rate
+     * when the rate list provides one; otherwise it stays billed at the flat
+     * input rate (never guessed).
      *
      * @return list<string>|string component amounts, or a failure reason
      */
@@ -90,10 +94,49 @@ final class ProviderCostCalculator
             return 'incomplete_token_usage';
         }
 
+        $cachedTokens = $this->cachedInputTokens($usage);
+
+        if ($cachedTokens !== null) {
+            $cachedRate = $rateSet->rate('cached_input');
+
+            if ($cachedRate !== null) {
+                return [
+                    CostMath::perMillion($usage->inputTokens - $cachedTokens, $inputRate),
+                    CostMath::perMillion($cachedTokens, $cachedRate),
+                    CostMath::perMillion($usage->outputTokens, $outputRate),
+                ];
+            }
+        }
+
         return [
             CostMath::perMillion($usage->inputTokens, $inputRate),
             CostMath::perMillion($usage->outputTokens, $outputRate),
         ];
+    }
+
+    /**
+     * @return int|null cached input tokens (clamped to input_tokens), null
+     *                  when the provider did not report the split
+     */
+    private function cachedInputTokens(ProviderUsage $usage): ?int
+    {
+        if ($usage->inputTokens === null) {
+            return null;
+        }
+
+        $details = $usage->raw['input_tokens_details'] ?? null;
+
+        if (! is_array($details)) {
+            return null;
+        }
+
+        $cached = $details['cached_tokens'] ?? null;
+
+        if ((! is_int($cached) && ! is_numeric($cached)) || (int) $cached <= 0) {
+            return null;
+        }
+
+        return min((int) $cached, $usage->inputTokens);
     }
 
     /**

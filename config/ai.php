@@ -18,7 +18,11 @@ return [
     // the verified lists below. Bump it together with a price change AND
     // snapshot it (php artisan cost:snapshot-rates) so historical jobs keep
     // an auditable record of the rates they were priced with.
-    'rate_version' => env('PROVIDER_RATE_VERSION', '2026-10-28'),
+    // 2026-10-28: initial verified lists (text/image/tts).
+    // 2026-10-29: re-verified against the official pricing page; added
+    // gpt-image-2.5-sunburst (previously unpriced — real calls were recorded
+    // with no rate) and verified cached_input rates for the text models.
+    'rate_version' => env('PROVIDER_RATE_VERSION', '2026-10-29'),
 
     'credential_store' => env('PROVIDER_CREDENTIAL_STORE', 'env'),
 
@@ -113,15 +117,19 @@ return [
             'max_output_tokens_metadata' => max(256, (int) env('OPENAI_MAX_OUTPUT_TOKENS_METADATA', 1000)),
         ],
 
-        // Verified list pricing, USD per 1M tokens (2026-10-28):
-        // https://platform.openai.com/docs/models/gpt-6.1-terra et al.
-        'pricing_source_url' => 'https://platform.openai.com/docs/models',
-        'pricing_verified_at' => '2026-10-28',
+        // Verified list pricing, USD per 1M tokens. First verified
+        // 2026-10-28; RE-VERIFIED 2026-10-29 against the official pricing
+        // page (https://developers.openai.com/api/docs/pricing) — base rates
+        // unchanged; cached_input rates added (verified same page/date).
+        // Long-context rates (>272K input) do not apply to this app's
+        // bounded prompts. Cached input for gpt-6.1-terra: $0.05/1M (5%).
+        'pricing_source_url' => 'https://developers.openai.com/api/docs/pricing',
+        'pricing_verified_at' => '2026-10-29',
         'pricing_per_mtok' => [
-            'gpt-6.1-terra' => ['input' => 1.00, 'output' => 5.00],
-            'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50],
-            'gpt-6.1-sol' => ['input' => 2.00, 'output' => 10.00],
-            'gpt-6-astra' => ['input' => 10.00, 'output' => 50.00],
+            'gpt-6.1-terra' => ['input' => 1.00, 'output' => 5.00, 'cached_input' => 0.05],
+            'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50, 'cached_input' => 0.01],
+            'gpt-6.1-sol' => ['input' => 2.00, 'output' => 10.00, 'cached_input' => 0.10],
+            'gpt-6-astra' => ['input' => 10.00, 'output' => 50.00, 'cached_input' => 1.00],
         ],
 
         // Image API settings (D-007 image portion, verified 2026-10-28 — see
@@ -147,12 +155,18 @@ return [
             'estimate_prompt_overhead_tokens' => 64,
         ],
 
-        // Verified image-model list pricing, USD per 1M tokens (2026-10-28):
-        // https://developers.openai.com/api/docs/models/gpt-image-2.5-flare
+        // Verified image-model list pricing, USD per 1M tokens. First
+        // verified 2026-10-28; RE-VERIFIED 2026-10-29 against the official
+        // pricing page (https://developers.openai.com/api/docs/pricing) and
+        // gpt-image-2.5-sunburst ADDED (identical standard rates — its
+        // absence had left real image calls unpriced). Token-based billing:
+        // size/quality affect token counts, not rates. Cached input applies
+        // to the Responses API only (this app uses the Images API).
         'image_pricing_source_url' => 'https://developers.openai.com/api/docs/pricing',
-        'image_pricing_verified_at' => '2026-10-28',
+        'image_pricing_verified_at' => '2026-10-29',
         'image_pricing_per_mtok' => [
             'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
+            'gpt-image-2.5-sunburst' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
         ],
 
         // Speech API settings (D-007 tts portion, verified 2026-10-28 — see
@@ -199,11 +213,16 @@ return [
             // adapters omit it for those models (prefix match).
             'models_without_instructions' => ['tts-1', 'tts-1-hd'],
 
-            // Verified list pricing for gpt-4o-mini-tts, USD per 1M tokens
-            // (model page, 2026-10-28): input text tokens $0.60, output audio
-            // tokens $12.00.
+            // Verified list pricing for gpt-4o-mini-tts, USD per 1M tokens.
+            // First verified 2026-10-28; RE-VERIFIED 2026-10-29 against the
+            // official pricing page — rates unchanged (input text $0.60,
+            // output audio $12.00 per 1M). Still no documented audio
+            // tokens-per-second figure anywhere (TTS actuals remain
+            // unavailable). Legacy tts-1/tts-1-hd bill per CHARACTER
+            // ($15/$30 per 1M chars) — different billing unit, not used by
+            // this app's default model.
             'pricing_source_url' => 'https://developers.openai.com/api/docs/pricing',
-            'pricing_verified_at' => '2026-10-28',
+            'pricing_verified_at' => '2026-10-29',
             'pricing_per_mtok' => [
                 'gpt-4o-mini-tts' => ['text_input' => 0.60, 'audio_output' => 12.00],
             ],

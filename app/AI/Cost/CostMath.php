@@ -82,11 +82,22 @@ final class CostMath
         }
 
         if (is_float($value)) {
-            // %.17G round-trips the float exactly; bcmath then works on the
-            // shortest exact decimal representation.
-            return sprintf('%.17G', $value);
+            // %.17F round-trips the float exactly in FIXED notation — %.17G
+            // (and PHP's (string) cast) switch to scientific notation below
+            // 1e-4 (e.g. "1.0E-5"), which bcmath rejects with a ValueError.
+            return sprintf('%.17F', $value);
         }
 
-        return $value === '' ? '0' : $value;
+        if ($value === '') {
+            return '0';
+        }
+
+        if (stripos($value, 'E') !== false) {
+            // Convert scientific-notation strings ("1.0E-5") to fixed
+            // notation instead of letting bcmath reject them.
+            return sprintf('%.17F', (float) $value);
+        }
+
+        return $value;
     }
 }

@@ -7,7 +7,8 @@
 | Item | Status |
 |---|---|
 | Documentation knowledge base (`.docs/`) | **Completed** (2026-10-27) |
-| SaaS cost accounting — auditable ledger, actual cost calculation, admin analytics | **Completed** (2026-10-29) — audit + cost model + admin `/admin/costs` analytics; 465 tests/2996 assertions green; see [COST_ACCOUNTING.md](COST_ACCOUNTING.md) and the 2026-10-29 entry in [CHANGELOG.md](CHANGELOG.md) |
+| SaaS cost accounting — auditable ledger, actual cost calculation, admin analytics | **Completed** (2026-10-29) — audit + cost model + admin `/admin/costs` analytics; see [COST_ACCOUNTING.md](COST_ACCOUNTING.md) |
+| Phase 7 — Cost validation & pricing simulation | **Completed** (2026-10-29) — 3 accounting defect fixes (bcmath notation crash, sunburst rates, cached-input pricing), provider rates re-verified 2026-10-29, reproducible pricing simulator (`php artisan pricing:simulate`), hypothetical Starter/Creator/Pro tiers + hybrid credit design with sensitivity analysis; 481 tests green; **no billing implemented**; see [COST_VALIDATION.md](COST_VALIDATION.md) and [PRICING_SIMULATION.md](PRICING_SIMULATION.md) |
 | Phase 0 — Laravel 13 Foundation | **Completed** (2026-10-27) |
 | Phase 1 — Domain model | **Completed** (2026-10-27) — see [phases/PHASE_01_DOMAIN_MODEL.md](phases/PHASE_01_DOMAIN_MODEL.md) |
 | Phase 2 — Provider layer | **Completed** (2026-10-27) — see [phases/PHASE_02_PROVIDER_LAYER.md](phases/PHASE_02_PROVIDER_LAYER.md) |

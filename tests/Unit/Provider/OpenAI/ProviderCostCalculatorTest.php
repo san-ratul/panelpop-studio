@@ -33,7 +33,7 @@ class ProviderCostCalculatorTest extends TestCase
         $this->assertSame(CostType::Actual, $computed->costType);
         $this->assertSame('2.500000', $computed->amount);
         $this->assertSame('measured_usage_x_list_rates', $computed->method);
-        $this->assertSame('openai-text-2026-10-28', $computed->rateVersion);
+        $this->assertSame('openai-text-2026-10-29', $computed->rateVersion);
         $this->assertSame('USD', $computed->currency);
     }
 
@@ -70,7 +70,7 @@ class ProviderCostCalculatorTest extends TestCase
         $this->assertSame(CostType::Actual, $computed->costType);
         $this->assertSame('2.180000', $computed->amount);
         $this->assertSame('measured_usage_x_list_rates', $computed->method);
-        $this->assertSame('openai-image-2026-10-28', $computed->rateVersion);
+        $this->assertSame('openai-image-2026-10-29', $computed->rateVersion);
     }
 
     public function test_image_usage_without_input_split_is_never_priced(): void
@@ -89,7 +89,7 @@ class ProviderCostCalculatorTest extends TestCase
         $this->assertSame(CostType::Unavailable, $computed->costType);
         $this->assertNull($computed->amount);
         $this->assertSame('image_usage_split_missing', $computed->method);
-        $this->assertSame('openai-image-2026-10-28', $computed->rateVersion);
+        $this->assertSame('openai-image-2026-10-29', $computed->rateVersion);
     }
 
     public function test_tts_without_usage_payload_stays_unavailable_with_pinned_version(): void
@@ -104,7 +104,7 @@ class ProviderCostCalculatorTest extends TestCase
         $this->assertSame(CostType::Unavailable, $computed->costType);
         $this->assertNull($computed->amount);
         $this->assertSame('no_usage_payload', $computed->method);
-        $this->assertSame('openai-tts-2026-10-28', $computed->rateVersion);
+        $this->assertSame('openai-tts-2026-10-29', $computed->rateVersion);
     }
 
     public function test_tts_usage_from_a_future_reporting_provider_is_priced(): void
@@ -119,6 +119,87 @@ class ProviderCostCalculatorTest extends TestCase
         // 1M × $0.60 + 1M × $12.00
         $this->assertSame(CostType::Actual, $computed->costType);
         $this->assertSame('12.600000', $computed->amount);
+    }
+
+    public function test_cached_input_tokens_are_priced_at_the_documented_cached_rate(): void
+    {
+        $usage = new ProviderUsage(
+            inputTokens: 1_000_000,
+            outputTokens: 100_000,
+            raw: ['input_tokens_details' => ['cached_tokens' => 400_000]],
+        );
+
+        $computed = $this->calculator->compute(
+            ProviderCapability::Text,
+            'openai',
+            'gpt-6.1-terra',
+            $usage,
+        );
+
+        // 600K × $1.00 + 400K × $0.05 + 100K × $5.00 = 0.60 + 0.02 + 0.50
+        $this->assertSame(CostType::Actual, $computed->costType);
+        $this->assertSame('1.120000', $computed->amount);
+    }
+
+    public function test_cached_tokens_are_clamped_to_input_tokens(): void
+    {
+        $usage = new ProviderUsage(
+            inputTokens: 100,
+            outputTokens: 100,
+            raw: ['input_tokens_details' => ['cached_tokens' => 500]],
+        );
+
+        $computed = $this->calculator->compute(
+            ProviderCapability::Text,
+            'openai',
+            'gpt-6.1-terra',
+            $usage,
+        );
+
+        // 0 uncached × $1 + 100 cached × $0.05 + 100 output × $5 per 1M
+        $this->assertSame('0.000505', $computed->amount);
+    }
+
+    public function test_missing_cached_rate_falls_back_to_flat_input_pricing(): void
+    {
+        // The TTS price list has no cached_input key: cached tokens must
+        // stay billed at the flat input rate instead of being guessed.
+        $usage = new ProviderUsage(
+            inputTokens: 1_000_000,
+            outputTokens: 1_000_000,
+            raw: ['input_tokens_details' => ['cached_tokens' => 500_000]],
+        );
+
+        $computed = $this->calculator->compute(
+            ProviderCapability::Tts,
+            'openai',
+            'gpt-4o-mini-tts',
+            $usage,
+        );
+
+        $this->assertSame('12.600000', $computed->amount);
+    }
+
+    public function test_sunburst_image_model_is_priced_identically_to_flare(): void
+    {
+        // gpt-image-2.5-sunburst (verified 2026-10-29) previously had no rate
+        // entry, leaving real image calls unpriced (no_rates_for_model).
+        $usage = new ProviderUsage(
+            inputTokens: 100_000,
+            outputTokens: 50_000,
+            raw: ['input_tokens_details' => ['text_tokens' => 40_000, 'image_tokens' => 60_000]],
+        );
+
+        $computed = $this->calculator->compute(
+            ProviderCapability::Image,
+            'openai',
+            'gpt-image-2.5-sunburst',
+            $usage,
+        );
+
+        $this->assertSame(CostType::Actual, $computed->costType);
+        $this->assertSame('2.180000', $computed->amount);
+        $this->assertSame('openai-image-2026-10-29', $computed->rateVersion);
     }
 
     public function test_provider_reported_money_takes_precedence_over_computation(): void

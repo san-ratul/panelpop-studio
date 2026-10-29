@@ -40,6 +40,23 @@ class CostMathTest extends TestCase
         $this->assertSame('12.340000', CostMath::toDecimal6(12.34));
     }
 
+    public function test_tiny_floats_do_not_produce_scientific_notation(): void
+    {
+        // Below 1e-4 both %.17G and PHP's (string) cast switch to exponent
+        // form ("1.0E-5"), which bcmath rejects with a ValueError. The
+        // helpers must accept such amounts (a provider-reported cost can be
+        // smaller than $0.0001) without crashing.
+        $this->assertSame('0.000011', CostMath::toDecimal6(0.0000105));
+        $this->assertSame('0.000011', CostMath::toDecimal6('1.05E-5'));
+        $this->assertSame('0.000000', CostMath::toDecimal6(0.0000001));
+    }
+
+    public function test_per_million_accepts_scientific_notation_strings(): void
+    {
+        // 10 × $0.0105 / 1M
+        $this->assertSame('0.000000105000', CostMath::perMillion(10, '1.05E-2'));
+    }
+
     public function test_is_positive_distinguishes_zero_from_positive(): void
     {
         $this->assertFalse(CostMath::isPositive('0.000000'));

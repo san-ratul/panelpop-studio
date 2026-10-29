@@ -53,6 +53,8 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 | [SECURITY.md](SECURITY.md) | You touch auth, downloads, secrets, process execution |
 | [COST_MANAGEMENT.md](COST_MANAGEMENT.md) | You touch provider calls, retries, budgets |
 | [COST_ACCOUNTING.md](COST_ACCOUNTING.md) | You touch cost calculation, the ledger schema, analytics, or pricing |
+| [COST_VALIDATION.md](COST_VALIDATION.md) | You audit cost coverage, verify provider rates, or query cost data |
+| [PRICING_SIMULATION.md](PRICING_SIMULATION.md) | You design subscription tiers, credits, or margin targets |
 | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | You write or run tests |
 | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) | You set up the machine or app environment |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | You need phase overview & dependencies |
