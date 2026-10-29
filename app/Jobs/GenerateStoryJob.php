@@ -11,6 +11,7 @@ use App\AI\Results\StoryDraft;
 use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Enums\ProviderCapability;
+use App\Enums\ProviderOperation;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Services\StoryPersister;
@@ -89,7 +90,7 @@ final class GenerateStoryJob implements ShouldQueue
                     language: $project->language,
                     presentationMode: $project->presentation_mode->value,
                 )),
-                new ProviderCallContext($project->id, $job->id),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::Story),
             );
 
             $summary = $persister->persistDraft($project, $draft, $job, $resolved->provider, $resolved->model);

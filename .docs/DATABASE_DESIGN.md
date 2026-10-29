@@ -4,7 +4,7 @@
 
 ## Infrastructure tables (Laravel framework)
 
-`users`, `jobs`, `job_batches`, `failed_jobs`, `cache`, `sessions` — standard Laravel 13 migrations. `users` gains no MVP columns beyond defaults (possibly `is_admin` bool if an admin concept is needed for the provider settings page — decide in Phase 2, record in DECISIONS.md).
+`users`, `jobs`, `job_batches`, `failed_jobs`, `cache`, `sessions` — standard Laravel 13 migrations. `users` gains `is_admin` (boolean, default false) for the internal cost-analytics gate (D-030; anticipated here since Phase 1).
 
 ## Application tables
 
@@ -165,22 +165,49 @@ Indexes: `(project_id, status)`, `(status, updated_at)` (stale-job sweeps).
 | id | pk | |
 | generation_job_id | FK → generation_jobs.id, nullOnDelete | |
 | project_id | FK → projects.id, nullable, cascade | |
+| user_id | FK → users.id, nullable, nullOnDelete | Denormalized owner for per-user analytics (migration `2026_10_29_000001`) |
 | capability | enum: text, image, tts, music | |
+| operation | enum: story, scene_planning, video_metadata, character_reference, scene_image, narration_tts, dialogue_tts, music_generation | Finer-grained billable category |
 | provider | varchar(60) | |
 | model | varchar(120) nullable | |
 | status | enum: success, failed, timeout, rate_limited | |
+| attempt | smallint unsigned, default 1 | 1-based retry attempt index (one row per attempt) |
 | http_status | smallint nullable | |
 | cost_estimate | decimal(10,6) nullable | Pre-call estimate |
-| cost_actual | decimal(10,6) nullable | From provider usage data when available |
+| cost_actual | decimal(10,6) nullable | From measured usage × pinned rates, or provider-reported money |
 | currency | char(3), default `USD` | |
+| rate_version | varchar(80) nullable | Pinned price-list key (e.g. `openai-image-2026-10-28`) → `provider_rates` |
+| cost_type | enum: actual, estimate, unavailable | Classification of the reliable amount |
+| charge_status | enum: confirmed, unconfirmed, rejected | Whether the provider provably charged |
+| calculation_method | varchar(60) nullable | `measured_usage_x_list_rates`, `provider_reported`, or the reason no amount was derivable |
 | input_tokens / output_tokens | int unsigned nullable | When provider reports usage |
+| usage_details | JSON nullable | Provider-reported usage detail (token splits) verbatim |
+| parameters | JSON nullable | Cost-relevant request parameters (size, quality, reference_count, text_chars, voice, …) — never prompts/secrets |
 | duration_ms | int nullable | Wall time of the call |
 | request_fingerprint | varchar(64) nullable | Idempotency/dedup key ([COST_MANAGEMENT.md](COST_MANAGEMENT.md)) |
+| provider_request_id | varchar(190) nullable | Provider response id for invoice reconciliation |
 | error_class | varchar(120) nullable | |
 | error_message | text nullable | Sanitized |
 | timestamps | | |
 
-Indexes: `(project_id, created_at)`, `(provider, status)`.
+Indexes: `(project_id, created_at)`, `(provider, status)`, `(user_id, created_at)`, `(operation)`, `(created_at)`, `(charge_status)`. Cost semantics, formulas and limitations: [COST_ACCOUNTING.md](COST_ACCOUNTING.md).
+
+### provider_rates
+Historical price-list snapshots (migration `2026_10_29_000002`), written by `php artisan cost:snapshot-rates`.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | pk | |
+| provider / capability / model / version | varchar | Unique together; version = `{provider}-{capability}-{rate_version}` |
+| currency | char(3), default `USD` | |
+| rates | JSON | Unit prices keyed per capability (e.g. text `input`/`output`; image `text_input`/`image_input`/`image_output`; tts `text_input`/`audio_output`) |
+| source_url | varchar(500) nullable | Official pricing page |
+| verified_at | date nullable | Verification date |
+| effective_from | date | |
+| timestamps | | |
+
+### users addition
+`users.is_admin` (boolean, default false; migration `2026_10_29_000003`) — operator flag gating the internal cost analytics (`admin` Gate, D-030).
 
 ## Ownership & authorization summary
 

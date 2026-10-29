@@ -4,6 +4,8 @@ namespace App\AI\Results;
 
 final class ImageResult implements ProviderResult
 {
+    use ReadsResultMeta;
+
     /**
      * @param  array<string, mixed>  $meta
      */

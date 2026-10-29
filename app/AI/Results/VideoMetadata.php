@@ -4,6 +4,8 @@ namespace App\AI\Results;
 
 final class VideoMetadata implements ProviderResult
 {
+    use ReadsResultMeta;
+
     /**
      * @param  array<string, mixed>  $meta
      */

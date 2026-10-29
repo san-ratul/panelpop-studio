@@ -39,7 +39,10 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user() ? $request->user()->only('id', 'name', 'email') : null,
+                // is_admin drives the admin-only navigation entry (the admin
+                // routes themselves are gated server-side by the `admin`
+                // gate — the flag alone never grants access).
+                'user' => $request->user() ? $request->user()->only('id', 'name', 'email', 'is_admin') : null,
             ],
             'appName' => config('app.name'),
             'routes' => $this->routeManifest(),

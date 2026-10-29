@@ -10,9 +10,11 @@ use App\AI\ProviderGateway;
 use App\AI\ProviderManager;
 use App\AI\ProviderRegistry;
 use App\AI\ProviderSettingsService;
+use App\Models\User;
 use App\Services\Render\ProcessRunner;
 use App\Services\Render\RenderSettings;
 use App\Services\Render\SymfonyProcessRunner;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Psr\Log\LoggerInterface;
 
@@ -54,6 +56,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Admin authorization for internal cost analytics: ordinary users are
+        // never allowed to see other users' usage or aggregate platform
+        // costs (D-030). Nothing else in the app requires admin rights.
+        Gate::define('admin', fn (User $user): bool => (bool) $user->is_admin);
     }
 }

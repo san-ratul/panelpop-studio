@@ -2,11 +2,12 @@
 
 > **Read this first every session.** Update before ending any substantial task. Statuses: Proposed | In progress | Blocked | Completed | Deferred.
 
-## Current state (updated: 2026-10-28)
+## Current state (updated: 2026-10-29)
 
 | Item | Status |
 |---|---|
 | Documentation knowledge base (`.docs/`) | **Completed** (2026-10-27) |
+| SaaS cost accounting — auditable ledger, actual cost calculation, admin analytics | **Completed** (2026-10-29) — audit + cost model + admin `/admin/costs` analytics; 465 tests/2996 assertions green; see [COST_ACCOUNTING.md](COST_ACCOUNTING.md) and the 2026-10-29 entry in [CHANGELOG.md](CHANGELOG.md) |
 | Phase 0 — Laravel 13 Foundation | **Completed** (2026-10-27) |
 | Phase 1 — Domain model | **Completed** (2026-10-27) — see [phases/PHASE_01_DOMAIN_MODEL.md](phases/PHASE_01_DOMAIN_MODEL.md) |
 | Phase 2 — Provider layer | **Completed** (2026-10-27) — see [phases/PHASE_02_PROVIDER_LAYER.md](phases/PHASE_02_PROVIDER_LAYER.md) |

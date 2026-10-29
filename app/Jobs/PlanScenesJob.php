@@ -11,6 +11,7 @@ use App\AI\Results\StoryDraft;
 use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Enums\ProviderCapability;
+use App\Enums\ProviderOperation;
 use App\Enums\StoryStatus;
 use App\Models\GenerationJob;
 use App\Models\Project;
@@ -118,7 +119,7 @@ final class PlanScenesJob implements ShouldQueue
                 $resolved,
                 ['kind' => 'plan', 'story_chars' => (string) mb_strlen($story->full_text)],
                 fn () => $resolved->textAdapter()->planScenes($draft, $constraints),
-                new ProviderCallContext($project->id, $job->id),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::ScenePlanning),
             );
 
             $summary = $persister->persistPlan($project, $story, $plan, $job, $resolved->provider, $resolved->model);

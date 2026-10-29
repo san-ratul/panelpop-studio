@@ -19,11 +19,19 @@ const route = createRouteResolver(page.props.routes);
 // fall back to the shared prop so the header always reflects the real state.
 const currentUser = computed(() => props.authUser ?? page.props.auth?.user ?? null);
 
-const navLinks = [
+const baseNavLinks = [
     { label: 'Dashboard', href: route('dashboard'), component: 'Dashboard' },
     { label: 'AI providers', href: route('provider-settings.index'), component: 'Settings/Providers' },
     { label: 'Account', href: route('password.edit'), component: 'Settings/Password' },
 ];
+
+// Admin-only entry; route access is gated server-side (admin gate), the
+// link is merely discoverability.
+const navLinks = computed(() =>
+    currentUser.value?.is_admin
+        ? [...baseNavLinks, { label: 'Cost analytics', href: route('admin.costs.index'), component: 'Admin/Costs' }]
+        : baseNavLinks,
+);
 
 const initials = computed(() => {
     const name = currentUser.value?.name ?? '';

@@ -8,6 +8,7 @@ use App\AI\ProviderGateway;
 use App\AI\ProviderManager;
 use App\AI\Results\VideoMetadata;
 use App\Enums\ProviderCapability;
+use App\Enums\ProviderOperation;
 use App\Models\Project;
 use App\Models\Scene;
 
@@ -63,7 +64,7 @@ final class VideoMetadataService
                 'title_chars' => (string) mb_strlen($storyTitle),
             ],
             fn (): VideoMetadata => $resolved->textAdapter()->generateVideoMetadata($brief),
-            new ProviderCallContext($project->id),
+            new ProviderCallContext($project->id, null, $project->user_id, ProviderOperation::VideoMetadata),
         );
     }
 

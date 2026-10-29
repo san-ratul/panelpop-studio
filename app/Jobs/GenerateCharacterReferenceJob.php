@@ -11,6 +11,7 @@ use App\AI\Results\ImageResult;
 use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Enums\ProviderCapability;
+use App\Enums\ProviderOperation;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Services\ImageAssetPersister;
@@ -115,7 +116,7 @@ final class GenerateCharacterReferenceJob implements ShouldQueue
                 $resolved,
                 ['kind' => 'character_reference', 'prompt_chars' => $promptChars, 'reference_count' => 0],
                 fn (): ImageResult => $resolved->imageAdapter()->generateCharacterReference($brief, $project->visual_style),
-                new ProviderCallContext($project->id, $job->id),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::CharacterReference),
             );
 
             $asset = $persister->persistCharacterReference($character, $result, $job, $resolved->provider, $resolved->model);

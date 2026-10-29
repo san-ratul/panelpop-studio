@@ -3,6 +3,7 @@
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
+use App\Http\Controllers\CostAnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasswordController;
 use App\Http\Controllers\ProjectAudioController;
@@ -29,6 +30,12 @@ Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->name('dashboard');
+
+// Internal cost analytics — admins only (D-030): aggregate accounting data
+// must never be reachable by ordinary users.
+Route::middleware(['auth', 'can:admin'])->prefix('admin')->name('admin.')->group(function (): void {
+    Route::get('/costs', [CostAnalyticsController::class, 'index'])->name('costs.index');
+});
 
 Route::middleware('auth')->group(function () {
     Route::get('/settings/providers', [ProviderSettingsController::class, 'index'])->name('provider-settings.index');

@@ -12,6 +12,7 @@ use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Enums\PresentationMode;
 use App\Enums\ProviderCapability;
+use App\Enums\ProviderOperation;
 use App\Models\DialogueLine;
 use App\Models\GenerationJob;
 use App\Models\Project;
@@ -198,7 +199,12 @@ final class GenerateVoiceJob implements ShouldQueue
                     'text_chars' => mb_strlen($text),
                 ],
                 fn (): AudioResult => $resolved->ttsAdapter()->synthesize($text, $voiceConfig),
-                new ProviderCallContext($project->id, $job->id),
+                new ProviderCallContext(
+                    $project->id,
+                    $job->id,
+                    $project->user_id,
+                    $isNarration ? ProviderOperation::NarrationTts : ProviderOperation::DialogueTts,
+                ),
             );
 
             $asset = $isNarration

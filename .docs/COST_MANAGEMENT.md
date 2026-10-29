@@ -4,7 +4,10 @@
 
 ## Tracking (ledger, not memory)
 
-- Every provider call writes a `provider_calls` row: capability, provider, model, status, cost_estimate (pre-call), cost_actual (when the provider reports usage), tokens, duration_ms, fingerprint ([DATABASE_DESIGN.md](DATABASE_DESIGN.md)).
+- Every provider call writes a `provider_calls` row per attempt: capability, operation, attempt index, provider, model, status, cost_estimate (pre-call), cost_actual (measured usage × pinned rate version, or provider-reported money), cost_type / charge_status classification, tokens + usage detail, duration_ms, fingerprint, provider request id ([COST_ACCOUNTING.md](COST_ACCOUNTING.md), [DATABASE_DESIGN.md](DATABASE_DESIGN.md)).
+- Cost classification is explicit: **actual** (provider-reported usage priced at a pinned `provider_rates` version), **estimate** (confirmed charge, exact amount unknown, e.g. TTS), **unavailable** (failed call — never counted as spend). Failed/timed-out calls are `charge_status = unconfirmed`, never assumed free; 4xx/429 refusals are `rejected`.
+- Historical prices are pinned per row via `rate_version` snapshots (`php artisan cost:snapshot-rates`) so older jobs are never silently recalculated at new prices.
+- Cost analytics (totals, per provider/model/operation/user, per video, per minute, failed/retry costs, missing usage) is admin-only (`/admin/costs`, D-030).
 - Generation history UI shows per-project and per-job costs ([REQUIREMENTS.md](REQUIREMENTS.md) FR-6.3).
 - Cost estimates derive from provider-published pricing **recorded with a verification date and official URL** in [reference/API_RESEARCH.md](reference/API_RESEARCH.md). No unverified prices hardcoded in code or docs.
 

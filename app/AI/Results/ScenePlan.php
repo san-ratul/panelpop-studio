@@ -4,6 +4,8 @@ namespace App\AI\Results;
 
 final class ScenePlan implements ProviderResult
 {
+    use ReadsResultMeta;
+
     /**
      * @param  list<PlannedScene>  $scenes
      * @param  array<string, mixed>  $meta

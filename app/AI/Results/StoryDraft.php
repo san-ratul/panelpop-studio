@@ -4,6 +4,8 @@ namespace App\AI\Results;
 
 final class StoryDraft implements ProviderResult
 {
+    use ReadsResultMeta;
+
     /**
      * @param  array<string, mixed>  $meta
      */

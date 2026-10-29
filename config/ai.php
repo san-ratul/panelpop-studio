@@ -14,6 +14,12 @@ $budgetCeiling = env('DAILY_PROVIDER_BUDGET_USD');
 
 return [
 
+    // Version key pinned onto every provider_calls row that is priced from
+    // the verified lists below. Bump it together with a price change AND
+    // snapshot it (php artisan cost:snapshot-rates) so historical jobs keep
+    // an auditable record of the rates they were priced with.
+    'rate_version' => env('PROVIDER_RATE_VERSION', '2026-10-28'),
+
     'credential_store' => env('PROVIDER_CREDENTIAL_STORE', 'env'),
 
     'artifact_disk' => env('MEDIA_DISK', 'media-private'),
@@ -109,6 +115,8 @@ return [
 
         // Verified list pricing, USD per 1M tokens (2026-10-28):
         // https://platform.openai.com/docs/models/gpt-6.1-terra et al.
+        'pricing_source_url' => 'https://platform.openai.com/docs/models',
+        'pricing_verified_at' => '2026-10-28',
         'pricing_per_mtok' => [
             'gpt-6.1-terra' => ['input' => 1.00, 'output' => 5.00],
             'gpt-6-luna' => ['input' => 0.10, 'output' => 0.50],
@@ -141,6 +149,8 @@ return [
 
         // Verified image-model list pricing, USD per 1M tokens (2026-10-28):
         // https://developers.openai.com/api/docs/models/gpt-image-2.5-flare
+        'image_pricing_source_url' => 'https://developers.openai.com/api/docs/pricing',
+        'image_pricing_verified_at' => '2026-10-28',
         'image_pricing_per_mtok' => [
             'gpt-image-2.5-flare' => ['text_input' => 5.00, 'image_input' => 8.00, 'image_output' => 30.00],
         ],
@@ -192,6 +202,8 @@ return [
             // Verified list pricing for gpt-4o-mini-tts, USD per 1M tokens
             // (model page, 2026-10-28): input text tokens $0.60, output audio
             // tokens $12.00.
+            'pricing_source_url' => 'https://developers.openai.com/api/docs/pricing',
+            'pricing_verified_at' => '2026-10-28',
             'pricing_per_mtok' => [
                 'gpt-4o-mini-tts' => ['text_input' => 0.60, 'audio_output' => 12.00],
             ],
