@@ -6,6 +6,7 @@ use App\AI\Exceptions\ProviderAuthException;
 use App\AI\Exceptions\ProviderRateLimitException;
 use App\AI\Exceptions\ProviderRequestException;
 use App\AI\Exceptions\ProviderTimeoutException;
+use App\AI\Fakes\FakeAudioFixture;
 use App\AI\Fakes\FakeProviderScenario;
 use App\AI\Inputs\CharacterBrief;
 use App\AI\Inputs\StoryBrief;
@@ -55,6 +56,18 @@ class ProviderCallAccountingTest extends TestCase
             ->create([
                 'provider' => 'openai',
                 'config' => ['model' => 'gpt-6.1-terra'],
+            ]);
+    }
+
+    private function openAiTtsSetting(): void
+    {
+        ProviderSettingsFactory::new()
+            ->forCapability(ProviderCapability::Tts)
+            ->asDefault()
+            ->withCredentials('sk-test-credential-1234')
+            ->create([
+                'provider' => 'openai',
+                'config' => ['model' => 'gpt-4o-mini-tts'],
             ]);
     }
 
@@ -154,12 +167,55 @@ class ProviderCallAccountingTest extends TestCase
 
     public function test_succeeded_call_without_usage_payload_is_classified_as_estimate(): void
     {
-        // The real OpenAI speech API returns binary audio with no usage
-        // payload; the fake reports one, so pin the real shape by asserting
-        // the classification rules through the fake image provider (which
-        // does report usage) versus its estimate-only path is covered by the
-        // calculator unit tests. Here: fake TTS success keeps a confirmed
-        // charge; its exact amount is provider-reported (cost_actual set).
+        // Regression: a REAL OpenAI speech success returns binary audio with
+        // no usage payload and no provider-reported money, so the gateway
+        // must reclassify the row as `estimate` (confirmed charge, unknown
+        // exact amount). The fake providers report costActual and skip that
+        // branch entirely — a missing ComputedCost import shipped past the
+        // whole suite this way and crashed every live voice generation.
+        $this->openAiTtsSetting();
+
+        Http::fake([
+            'api.openai.com/v1/audio/speech' => Http::response(
+                FakeAudioFixture::wav(1500),
+                200,
+                ['Content-Type' => 'audio/wav'],
+            ),
+        ]);
+
+        $resolved = app(ProviderManager::class)->resolve(ProviderCapability::Tts, $this->project);
+
+        $result = app(ProviderGateway::class)->call(
+            $resolved,
+            ['kind' => 'tts', 'text_chars' => 27],
+            fn () => $resolved->ttsAdapter()->synthesize('The narrator sets the scene.'),
+            new ProviderCallContext(
+                $this->project->id,
+                null,
+                $this->project->user_id,
+                ProviderOperation::NarrationTts,
+            ),
+        );
+
+        $this->assertSame(1500, $result->durationMs);
+
+        $call = ProviderCall::query()->sole();
+
+        $this->assertSame(ProviderCallStatus::Success, $call->status);
+        $this->assertSame(ProviderOperation::NarrationTts, $call->operation);
+        $this->assertNull($call->cost_actual);
+        $this->assertSame(CostType::Estimate, $call->cost_type);
+        $this->assertSame(ChargeStatus::Confirmed, $call->charge_status);
+        $this->assertSame('no_usage_payload', $call->calculation_method);
+        $this->assertSame('openai-tts-2026-10-29', $call->rate_version);
+        $this->assertNotNull($call->cost_estimate, 'The pre-call estimate is retained as the amount figure');
+    }
+
+    public function test_succeeded_fake_tts_call_keeps_provider_reported_actual(): void
+    {
+        // The fake TTS provider reports a deterministic cost: the row keeps
+        // its actual classification (contrast with the estimate-only real
+        // Speech API shape above).
         $this->fakeDefault(ProviderCapability::Tts);
 
         $resolved = app(ProviderManager::class)->resolve(ProviderCapability::Tts, $this->project);

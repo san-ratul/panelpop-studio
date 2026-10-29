@@ -3,6 +3,7 @@
 namespace App\AI;
 
 use App\AI\Cost\BudgetGuard;
+use App\AI\Cost\ComputedCost;
 use App\AI\Cost\ProviderCostCalculator;
 use App\AI\Exceptions\ProviderException;
 use App\AI\Exceptions\ProviderRateLimitException;
