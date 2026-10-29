@@ -121,4 +121,8 @@ Interpretation: at the pack rate (~$0.40–0.45/credit), a 60–70% margin targe
 ## 9. Verdict
 
 - The proposed $9/$19/$49 tiers with 8/25/80 hybrid credits clear a 70% gross-margin target on every tested scenario, with the heavy-user worst case at **80.5%** and the worst tested shock combination at **28.6%** (still profitable).
-- **The product is NOT ready to charge customers:** TTS actuals remain unmeasurable through the API (τ unresolved), production retry/regeneration rates are unknown, bandwidth is unmeasured, and no payment infrastructure exists. Re-run `php artisan pricing:simulate` against real `provider_calls` data after a measured pilot before finalizing prices.
+- **The product is NOT ready to charge customers:** TTS actuals remain unmeasurable through the API (τ unresolved), production retry/regeneration rates are unknown, inline-preview bandwidth is unmeasured, and no payment infrastructure exists. Re-run `php artisan pricing:simulate` against real `provider_calls` data after a measured pilot before finalizing prices.
+
+## 10. Admin UI access (Phase 8, 2026-10-29)
+
+The simulation is now also inspectable in the admin area at **`/admin/pricing-simulation`** (sidebar → Administration → Pricing simulation; admin-gated). The page is a **read-only reuse of the same `App\Services\Cost\PricingSimulator` application service** the CLI prints — no calculation logic is duplicated, nothing is executed in a shell, and a test pins the UI output byte-for-byte to the service (`PricingSimulationTest::test_ui_matches_the_cli_simulator_output_exactly`). The page adds: the ledger data sample (provider calls / completed renders / TTS estimate-only rows / latest row), the generation timestamp, the effective verified provider rates with source URLs, and the raw simulator inputs — every candidate price is labelled a **provisional hypothesis**. **No billing, checkout, credit deduction, or payment processing exists or was added.**

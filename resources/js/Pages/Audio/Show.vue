@@ -258,7 +258,7 @@ function formatDuration(ms) {
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser">
+    <AppLayout :auth-user="authUser" :project="project">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Audio</h1>

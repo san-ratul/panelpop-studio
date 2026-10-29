@@ -150,7 +150,7 @@ if (props.storyJobActive || props.planJobActive) {
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser">
+    <AppLayout :auth-user="authUser" :project="project">
         <div class="mx-auto max-w-3xl">
             <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>

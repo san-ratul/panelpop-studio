@@ -24,7 +24,15 @@ class AssetController extends Controller
 
         abort_unless($disk->exists($asset->path), 404);
 
-        $disposition = $request->boolean('download') ? 'attachment' : 'inline';
+        $download = $request->boolean('download');
+
+        // Measured bandwidth accounting: only explicit downloads are counted
+        // (inline previews are cacheable and would overstate egress).
+        if ($download) {
+            $asset->recordDownload();
+        }
+
+        $disposition = $download ? 'attachment' : 'inline';
 
         return $disk->response($asset->path, basename($asset->path), [
             'Content-Type' => $asset->mime ?? 'application/octet-stream',

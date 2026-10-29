@@ -39,6 +39,19 @@ final class RenderCostCalculator
     }
 
     /**
+     * Bandwidth allocation for the given measured transferred bytes
+     * (download endpoints record served bytes since Phase 8).
+     */
+    public function bandwidthCost(int $bytes): string
+    {
+        $rate = (string) config('costs.bandwidth.per_gb_usd', 0);
+
+        $gb = bcdiv((string) max(0, $bytes), '1073741824', 12);
+
+        return CostMath::toDecimal6(CostMath::multiply($gb, $rate));
+    }
+
+    /**
      * @return array<string, float|string>
      */
     public function rates(): array

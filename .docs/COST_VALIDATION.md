@@ -14,10 +14,13 @@ All three fixes are tightly scoped, covered by tests, and preserve existing beha
 
 **Documented (not fixed — not tightly scoped):**
 
-- **Per-video attribution with re-renders:** `CostAnalyticsService::perVideo` attributes the FULL project-wide provider cost to EVERY succeeded render of that project in the window. Exact for the normal single-render project; overstated per-video when a project is rendered multiple times (fixing requires cost-to-render-time allocation). Ledger totals remain correct — only the per-video rows are affected.
 - **`retry_cost` in admin analytics is a conservative upper bound:** it sums actuals of successful retry rows plus the estimate CEILINGS of failed attempts (whose `cost_type` is `unavailable` and are correctly excluded from the spend figures elsewhere).
-- **Legacy pre-`2026_10_29` rows** have NULL `cost_type`/`operation`; they count toward actuals but not the classified estimate-spend sums.
+- **Legacy pre-`2026_10_29` rows** have NULL `cost_type`/`operation`; they count toward actuals but not the classified estimate-spend sums. *(Phase 8: they are now a first-class filterable investigation bucket — `unclassified` in `/admin/costs/calls` and the `unclassified_calls` total.)*
 - `BudgetGuard::spentToday()` uses `COALESCE(cost_actual, cost_estimate)` — a deliberate conservative ceiling (counts unconfirmed exposure).
+
+**Fixed in Phase 8 (2026-10-29):**
+
+- **Per-video attribution with re-renders** (previously documented as not-fixed): `CostAnalyticsService::perVideo` attributed the FULL project-wide provider cost to EVERY succeeded render. It now attributes provider costs (and project-shared storage/download measurements) **once per project** — to the earliest completed render in the window — while render infrastructure stays measured per render; re-render rows reference the carrying render. Provider cost is additionally broken out per operation. Tests: `PerVideoAttributionTest`.
 
 **Verified correct (no defect):** one ledger row per attempt with attempt indexes; reuse of ready assets creates zero provider calls (tested); explicit regeneration creates new cost-bearing operations (tested); timeouts/5xx/malformed → `charge_status = unconfirmed` (never assumed free); 4xx/429 → `rejected`; image pricing requires the provider-reported text/image input split (aggregate-only usage is never priced); rate snapshots immutable; `/admin/costs` gated by the `admin` gate (403 for ordinary users, redirect for guests — tested).
 
@@ -50,7 +53,7 @@ Rate-snapshot discipline: `provider_rates` now holds both `openai-*-2026-10-28` 
 | Music / SFX generation | **Not applicable** (disabled by decision D-007) | Extensible `music_generation` operation + rates branch ready | No verified vendor/rates |
 | Render compute | **Measured usage, cost unresolved** | wall seconds recorded per render job (observed 16 s wall / 64 s video, n=1) | `config/costs.php` rate 0.0 until deployment pricing is chosen |
 | Storage | **Measured usage, cost unresolved** | retained artifact bytes recorded on assets (observed ≈ 14.5 MB per 64 s video incl. thumbnail/SRT) | Same rate status; no historical point-in-time snapshots |
-| Bandwidth | **Missing** (not measured) | download endpoint does not count bytes served | Mechanism reserved in config; reported as null, never guessed |
+| Bandwidth | **Measured for explicit downloads only** (Phase 8) | `?download=1` responses count one download + served bytes on the asset row (`assets.download_count`/`downloaded_bytes`, migration 2026_10_29_000004) | Inline previews are cacheable and deliberately NOT counted; rate 0.0 until deployment pricing is chosen |
 | Failed/timeout attempts | **Unconfirmed** (may have been billed) | `charge_status=unconfirmed` + estimate ceiling kept | Reconcile manually via provider dashboards (provider request id stored) |
 | Rejected attempts (4xx/429) | **Rejected** (no charge possible) | Provider refused before execution | — |
 
@@ -84,6 +87,10 @@ Source: dev MySQL `cartoon_studio` — manual real-key integration testing from 
 
 ## 6. Verification
 
-- Full suite after fixes: **481 tests / 3044 assertions / 0 failures** (465 pre-existing + 16 new).
+- Full suite after Phase 8: **525 tests / 3507 assertions / 0 failures** (482 pre-existing + 43 new — admin account setup, admin dashboard ACL/data, ledger-report ACL/filters/pagination, pricing-simulation CLI↔UI consistency, navigation visibility, per-video attribution, download metrics).
 - `npm run build` ✓ · `vendor/bin/pint --test` ✓ · `git diff --check` ✓.
-- Dev DB: additive rate snapshot only (version `2026-10-29`); no destructive operations; no billing code; no live billable API calls.
+- Dev DB: additive migration only (download metrics, `2026_10_29_000004`); no destructive operations; no billing code; no live billable API calls. Admin area usage: [ADMIN_SETUP.md](ADMIN_SETUP.md).
+
+## 7. Phase 8 admin experience (2026-10-29)
+
+The Phase 7 analytics existed only at `/admin/costs`, reachable by typing the URL — the reported "no useful analytics from the dashboard" was a **discoverability defect** (no admin landing page, no sidebar, single desktop-only header entry), not missing analytics. Phase 8 added: `admin:create`/`admin:revoke` account lifecycle (hidden-prompt passwords, `--promote` + confirmation for existing users, idempotent), the `/admin` overview, `/admin/costs/calls` ledger investigation (filters + server-side pagination incl. missing-usage / retries-only / unclassified buckets), the read-only `/admin/pricing-simulation` page (same `PricingSimulator` service as the CLI, pinned by a byte-for-byte consistency test), and the persistent sidebar with an admins-only Administration section. Details: [ADMIN_SETUP.md](ADMIN_SETUP.md).

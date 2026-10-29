@@ -19,6 +19,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'original_filename',
     'mime',
     'size_bytes',
+    'download_count',
+    'downloaded_bytes',
     'meta',
     'status',
 ])]
@@ -34,7 +36,23 @@ class Asset extends Model
             'status' => AssetStatus::class,
             'meta' => 'array',
             'size_bytes' => 'integer',
+            'download_count' => 'integer',
+            'downloaded_bytes' => 'integer',
         ];
+    }
+
+    /**
+     * Records one measured download of this asset (authorized `?download=1`
+     * responses only). Served bytes are taken from the recorded artifact
+     * size; timestamps are untouched so asset.updated_at keeps meaning the
+     * artifact's own lifecycle.
+     */
+    public function recordDownload(): void
+    {
+        Asset::withoutTimestamps(function (): void {
+            $this->increment('download_count');
+            $this->increment('downloaded_bytes', max(0, (int) $this->size_bytes));
+        });
     }
 
     public function project(): BelongsTo

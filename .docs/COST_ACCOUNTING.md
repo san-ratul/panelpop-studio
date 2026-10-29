@@ -91,32 +91,38 @@ All rates: USD per 1M tokens, from [reference/API_RESEARCH.md](reference/API_RES
 | Storage | `stored_artifact_bytes / 1GiB × COST_STORAGE_PER_GB_MONTH_USD / 30` per day (measured from retained asset bytes: video + thumbnail + SRT) |
 | Bandwidth | **not measured** (download endpoint does not count bytes) — reported as `null`, rate reserved in `config/costs.php` |
 
-Per-video aggregation (admin analytics):
+Per-video aggregation (admin analytics, Phase 8):
 
 ```
 video_total = Σ provider_calls(actual) + Σ provider_calls(estimate-only)
-            + render_wall_seconds × render_rate
-video_total_per_minute = video_total / (duration_ms / 1000) × 60
+            + render_wall_seconds × render_rate + measured_downloads × bytes × bandwidth_rate
 ```
 
-Missing-usage investigation: `status = success AND cost_actual IS NULL AND cost_type <> 'actual'` (currently: TTS rows by design; any future silent usage loss also surfaces here).
+**Attribution / double-counting rules (Phase 8):** provider ledger costs, retained-artifact storage and download metrics are attributed **once per project** — to the project's earliest completed render in the window. A re-render reuses the same assets and creates no new provider operations, so repeating the full project cost on every render row would multiply the same dollars; later rows carry `provider cost counted under render #id` instead. Render infrastructure is measured per render (own wall seconds) and always attributed to that render alone. Provider components are additionally broken out per operation (story / scene_planning / character_reference / scene_image / tts / video_metadata / unclassified legacy).
+
+Missing-usage investigation: `status = success AND cost_actual IS NULL AND cost_type <> 'actual'` (currently: TTS rows by design; any future silent usage loss also surfaces here). Legacy pre-`2026_10_29` rows with `cost_type IS NULL` are a separate `unclassified_calls` investigation bucket filterable in the detailed report.
 
 ## 4. Admin cost analytics (implemented)
 
-- Route `GET /admin/costs` (`admin.costs.index`), gated by the new `admin` Gate (`users.is_admin`, D-030) — ordinary users get 403, guests redirect to login. Exposes only aggregate accounting data; no prompts, credentials, or storage paths.
-- Vue page `resources/js/Pages/Admin/Costs.vue` (JS only) with date-range filter; nav entry shown only to admins (`auth.user.is_admin` shared prop).
-- Sections: totals (actual / estimated-only / unconfirmed / rejected / retries / missing-usage), cost by provider, by model, by operation, by status, per user; completed videos with per-video total + per-minute + avg/p50/p90/max distribution; measured infrastructure usage + allocation at configured rates.
+Admin area (Phase 8) — every route gated by the `admin` Gate (`users.is_admin`, D-030); ordinary users get 403, guests redirect to login. Account lifecycle: `php artisan admin:create` / `admin:revoke` (see [ADMIN_SETUP.md](ADMIN_SETUP.md)).
+
+- **Admin overview** `GET /admin` (`admin.dashboard`, `Admin/Dashboard.vue`): measured exposure overview (operations, verified actual, estimated-only, unconfirmed, rejected, retry exposure, needs-investigation incl. unclassified legacy rows), per-video stats with sample-size labels, infrastructure gaps, and a pricing-simulation status card; date-range filter; links to the detailed pages.
+- **Cost analytics** `GET /admin/costs` (`admin.costs.index`, `Admin/Costs.vue`): totals (actual / estimated-only / unconfirmed / rejected / retries / missing-usage / unclassified), cost by provider, by model, by operation, by status, per user; per-video table with per-operation cost components, per-video + per-minute cost, storage accrual, downloads/bandwidth, and attribution notes; measured infrastructure usage + allocation at configured rates.
+- **Detailed cost reports** `GET /admin/costs/calls` (`admin.costs.calls`, `Admin/CostCalls.vue`): the per-operation ledger with server-side pagination and filters (date range, provider, model, operation, request status, cost classification incl. `unclassified`, charge status, user, project, render/job, missing-usage-only, retries-only). Reconciliation fields only — no prompts, credentials, or artifact locations.
+- **Pricing simulation** `GET /admin/pricing-simulation` (`admin.pricing.simulation`, `Admin/PricingSimulation.vue`): read-only reuse of `App\Services\Cost\PricingSimulator` — identical output to `pricing:simulate --json` (pinned by test); no shell execution, no billing semantics; sample size + generation timestamp + hypothesis labels on every candidate price.
 - Service: `App\Services\Cost\CostAnalyticsService` (SQL decimal aggregation + bounded PHP assembly); `App\Services\Cost\RenderCostCalculator` (measured usage × `config/costs.php` rates; defaults 0.0 = mechanism ready, price not yet decided).
+- Navigation: persistent sidebar (Workspace / Settings / Administration sections; contextual project sections Story / Storyboard / Characters / Audio / Render from the page's `project` prop); the Administration section renders only for admins — the server-side gate is the authorization boundary (tested), the sidebar is discoverability.
 
 ## 5. Limitations and honest unknowns
 
 1. **TTS actual cost is not computable** on the documented Speech API (no usage payload). Rows are confirmed-charge/estimated-amount by design; reconciliation requires the OpenAI usage dashboard until a usage-reporting replacement adapter exists.
-2. **Cached input tokens are billed flat** — the verified price lists do not include documented cache discounts, so text actuals may slightly overstate cost. Recorded as a limitation, not silently ignored.
+2. **Cached input tokens are billed flat** — the verified price lists do not include documented cache discounts, so text actuals may slightly overstate cost. Recorded as a limitation, not silently ignored. *(Updated 2026-10-29 Phase 7: documented cached-input rates exist and are applied when reported — see [COST_VALIDATION.md](COST_VALIDATION.md).)*
 3. **Timeouts may hide charges** — flagged `unconfirmed` with the pre-call estimate as a ceiling; reconciliation against the provider dashboard is manual (provider request id is stored when the provider returned one).
-4. **Bandwidth is not measured**; storage accrual is a per-day rate applied to current retained bytes (no historical point-in-time snapshots).
+4. **Bandwidth is measured only for explicit downloads** (Phase 8: `?download=1` responses count one download + served bytes on the asset row; inline previews are cacheable and deliberately uncounted — a documented gap). Storage accrual is a per-day rate applied to current retained bytes (no historical point-in-time snapshots).
 5. **Render allocation is operator infrastructure pricing**, not a provider bill — rates default to 0.0 until deployment pricing is chosen (`config/costs.php`).
 6. **Estimates are deliberately conservative upper bounds** (estimator constants in `config/ai.php`); they exist for the budget ceiling, and analytics never sums them into "actual".
-7. Legacy rows created before migration 2026_10_29_000001 have `NULL` operation/cost_type/charge_status and `attempt = 1`; `spentToday()` (BudgetGuard) and the analytics treat missing cost_type safely (NULL cost_type rows are excluded from the estimate-spend sums; their `cost_actual` still counts).
+7. Legacy rows created before migration 2026_10_29_000001 have `NULL` operation/cost_type/charge_status and `attempt = 1`; `spentToday()` (BudgetGuard) and the analytics treat missing cost_type safely (NULL cost_type rows are excluded from the estimate-spend sums; their `cost_actual` still counts). They surface as the filterable `unclassified` bucket in the detailed report.
+8. **Per-video attribution is project-level (Phase 8 rule):** provider costs are project-lifetime ledger totals attributed once to the earliest completed render in the window; a date-filtered report can therefore show a project's provider cost even when the calls themselves predate the window (deliberate — the video consumed them).
 
 ## 6. SaaS pricing readiness (inspection, no billing implemented)
 

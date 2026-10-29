@@ -1,5 +1,5 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { buttonVariants } from '@/Components/Form/buttonVariants.js';
@@ -14,6 +14,10 @@ const props = defineProps({
         default: () => [],
     },
 });
+
+const page = usePage();
+
+const isAdmin = computed(() => Boolean((props.authUser ?? page.props.auth?.user)?.is_admin));
 
 const totalScenes = computed(() =>
     props.projects.reduce((sum, project) => sum + (Number(project.scene_count) || 0), 0),
@@ -65,6 +69,20 @@ function formatDate(iso) {
                 New project
             </Link>
         </div>
+
+        <Link
+            v-if="isAdmin"
+            :href="route('admin.dashboard')"
+            class="mt-4 flex flex-col gap-1 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-sm shadow-sm transition hover:border-indigo-300 sm:flex-row sm:items-center sm:justify-between"
+        >
+            <span>
+                <span class="font-semibold text-indigo-900">Administration</span>
+                <span class="block text-xs text-indigo-700">
+                    Cost overview, detailed cost reports, and the pricing simulation.
+                </span>
+            </span>
+            <span class="font-medium text-indigo-700">Open admin overview →</span>
+        </Link>
 
         <div
             v-if="projects.length === 0"

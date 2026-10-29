@@ -40,7 +40,7 @@ function destroy() {
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser">
+    <AppLayout :auth-user="authUser" :project="project">
         <div class="flex items-center justify-between">
             <h1 class="text-2xl font-semibold text-gray-900">Project settings</h1>
             <Link

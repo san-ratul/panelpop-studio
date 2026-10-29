@@ -55,6 +55,7 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 | [COST_ACCOUNTING.md](COST_ACCOUNTING.md) | You touch cost calculation, the ledger schema, analytics, or pricing |
 | [COST_VALIDATION.md](COST_VALIDATION.md) | You audit cost coverage, verify provider rates, or query cost data |
 | [PRICING_SIMULATION.md](PRICING_SIMULATION.md) | You design subscription tiers, credits, or margin targets |
+| [ADMIN_SETUP.md](ADMIN_SETUP.md) | You create/revoke admin accounts, work on the admin area, sidebar, or measured-pilot instrumentation |
 | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | You write or run tests |
 | [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) | You set up the machine or app environment |
 | [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) | You need phase overview & dependencies |

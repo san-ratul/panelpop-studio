@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\CostAnalyticsController;
+use App\Http\Controllers\CostCallReportController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasswordController;
+use App\Http\Controllers\PricingSimulationController;
 use App\Http\Controllers\ProjectAudioController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectRenderController;
@@ -31,10 +34,14 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->name('dashboard');
 
-// Internal cost analytics — admins only (D-030): aggregate accounting data
-// must never be reachable by ordinary users.
+// Internal admin area — admins only (D-030): aggregate accounting data and
+// operational reports must never be reachable by ordinary users. The admin
+// sidebar entries merely aid discoverability; this gate is the boundary.
 Route::middleware(['auth', 'can:admin'])->prefix('admin')->name('admin.')->group(function (): void {
+    Route::get('/', [AdminDashboardController::class, 'index'])->name('dashboard');
     Route::get('/costs', [CostAnalyticsController::class, 'index'])->name('costs.index');
+    Route::get('/costs/calls', [CostCallReportController::class, 'index'])->name('costs.calls');
+    Route::get('/pricing-simulation', [PricingSimulationController::class, 'index'])->name('pricing.simulation');
 });
 
 Route::middleware('auth')->group(function () {
