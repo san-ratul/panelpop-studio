@@ -81,6 +81,7 @@ Route::middleware('auth')->scopeBindings()->group(function () {
     Route::post('/projects/{project}/audio/upload', [ProjectAudioController::class, 'storeUpload'])->name('audio.upload');
     Route::post('/projects/{project}/audio/generate', [ProjectAudioController::class, 'generateVoice'])->name('audio.generate');
     Route::patch('/projects/{project}/audio/narration-voice', [ProjectAudioController::class, 'updateNarrationVoice'])->name('audio.narration-voice');
+    Route::patch('/projects/{project}/audio/presentation-mode', [ProjectAudioController::class, 'updatePresentationMode'])->name('audio.presentation-mode');
     Route::patch('/projects/{project}/audio/assets/{asset}/licence', [ProjectAudioController::class, 'updateLicence'])->name('audio-assets.update-licence');
     Route::delete('/projects/{project}/audio/assets/{asset}', [ProjectAudioController::class, 'destroyAsset'])->name('audio-assets.destroy');
     Route::post('/projects/{project}/scenes/{scene}/generate-narration', [ProjectAudioController::class, 'generateNarration'])->name('scenes.generate-narration');

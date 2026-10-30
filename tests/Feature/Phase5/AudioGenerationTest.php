@@ -445,6 +445,61 @@ class AudioGenerationTest extends TestCase
         $this->assertNull($this->project->refresh()->settings['narration_voice_config'] ?? null);
     }
 
+    public function test_switching_to_hybrid_from_the_audio_page_voices_saved_dialogue_lines(): void
+    {
+        $this->fakeTtsDefault();
+
+        // Regression: dialogue lines saved in the storyboard were silently
+        // skipped in narrator mode — the batch queued narration only and the
+        // audio page never offered a way to voice them.
+        $character = Character::factory()->for($this->project)->create(['name' => 'Pip']);
+        $scene = $this->addScene(1);
+        $this->addLine($scene, 'Dance along with me!', $character);
+
+        $this->patch(route('audio.presentation-mode', $this->project), [
+            'presentation_mode' => 'hybrid',
+        ])->assertRedirect(route('audio.show', $this->project))
+            ->assertSessionHas('success');
+
+        $this->assertSame('hybrid', $this->project->refresh()->presentation_mode->value);
+
+        $this->post(route('audio.generate', $this->project))->assertRedirect();
+
+        $this->assertSame(2, Asset::query()->count());
+        $this->assertSame(2, ProviderCall::query()->count());
+
+        $line = $scene->dialogueLines->sole();
+
+        $this->assertSame(DialogueLineStatus::Ready, $line->refresh()->status);
+        $this->assertNotNull($line->audio_asset_id);
+    }
+
+    public function test_presentation_mode_switch_rejects_silent_modes(): void
+    {
+        $this->patch(route('audio.presentation-mode', $this->project), [
+            'presentation_mode' => 'silent',
+        ])->assertSessionHasErrors(['presentation_mode']);
+
+        $this->patch(route('audio.presentation-mode', $this->project), [
+            'presentation_mode' => 'not-a-mode',
+        ])->assertSessionHasErrors(['presentation_mode']);
+
+        $this->assertSame('narrator', $this->project->refresh()->presentation_mode->value);
+    }
+
+    public function test_strangers_cannot_switch_the_presentation_mode(): void
+    {
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->patch(route('audio.presentation-mode', $this->project), [
+                'presentation_mode' => 'hybrid',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('narrator', $this->project->refresh()->presentation_mode->value);
+    }
+
     public function test_invalid_fake_credentials_surface_the_auth_path_with_an_actionable_message(): void
     {
         $this->fakeTtsDefault();
@@ -494,6 +549,21 @@ class AudioGenerationTest extends TestCase
                     ->where('voiceJobs.0.status', 'succeeded')
                     ->where('voiceJobActive', false)
                     ->where('silentMode', false)
+            );
+    }
+
+    public function test_audio_page_offers_grouped_voices_and_style_presets(): void
+    {
+        $this->get(route('audio.show', $this->project))
+            ->assertOk()
+            ->assertInertia(
+                fn (InertiaAssert $page) => $page
+                    ->component('Audio/Show')
+                    ->has('voiceGroups')
+                    ->where('voiceGroups.0.label', 'Female voices')
+                    ->has('voiceGroups.0.options', 5)
+                    ->has('stylePresets', 10)
+                    ->where('stylePresets.0.value', 'natural')
             );
     }
 

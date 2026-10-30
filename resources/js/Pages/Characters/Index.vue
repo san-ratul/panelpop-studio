@@ -3,6 +3,8 @@ import { Link, router, useForm } from '@inertiajs/vue3';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BaseButton from '@/Components/Form/BaseButton.vue';
+import CharacterVoicePicker from '@/Components/CharacterVoicePicker.vue';
+import SelectInput from '@/Components/Form/SelectInput.vue';
 import TextArea from '@/Components/Form/TextArea.vue';
 import TextInput from '@/Components/Form/TextInput.vue';
 
@@ -27,20 +29,72 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    voiceGroups: {
+        type: Array,
+        default: () => [],
+    },
+    stylePresets: {
+        type: Array,
+        default: () => [],
+    },
+    defaultVoice: {
+        type: String,
+        default: 'alloy',
+    },
 });
+
+function detectStylePreset(instructions) {
+    const match = props.stylePresets.find(
+        (preset) => preset.instructions !== '' && preset.instructions === (instructions ?? '').trim(),
+    );
+
+    if (match) {
+        return match.value;
+    }
+
+    return (instructions ?? '').trim() === '' ? 'natural' : 'custom';
+}
 
 const createForm = useForm({
     name: '',
     description: '',
     consistency_notes: '',
+    voice: '',
+    style: 'natural',
+    instructions: '',
 });
+
+// Picking a style preset fills the editable instructions field; "custom"
+// leaves the field untouched.
+watch(
+    () => createForm.style,
+    (style) => {
+        const preset = props.stylePresets.find((option) => option.value === style);
+
+        if (preset) {
+            createForm.instructions = preset.instructions;
+        }
+    },
+);
 
 const referenceForm = useForm({});
 
 function submitCreate() {
-    createForm.post(route('characters.store', props.project.id), {
-        onSuccess: () => createForm.reset(),
-    });
+    createForm
+        .transform((data) => ({
+            name: data.name,
+            description: data.description,
+            consistency_notes: data.consistency_notes,
+            voice_config: {
+                voice: data.voice === '' ? null : data.voice,
+                instructions: (data.instructions ?? '').trim() === '' ? null : data.instructions.trim(),
+            },
+        }))
+        .post(route('characters.store', props.project.id), {
+            onSuccess: () => {
+                createForm.reset().clearErrors();
+            },
+        });
 }
 
 function destroy(character) {
@@ -174,6 +228,52 @@ if (props.referenceJobActive) {
                     rows="2"
                     :error="createForm.errors.consistency_notes"
                 />
+                <SelectInput
+                    id="create-voice"
+                    v-model="createForm.voice"
+                    label="Dialogue voice (optional)"
+                >
+                    <option value="">
+                        Provider default ({{ defaultVoice }})
+                    </option>
+                    <optgroup
+                        v-for="group in voiceGroups"
+                        :key="group.label"
+                        :label="group.label"
+                    >
+                        <option
+                            v-for="option in group.options"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </optgroup>
+                </SelectInput>
+                <SelectInput
+                    id="create-voice-style"
+                    v-model="createForm.style"
+                    label="Voice style (optional)"
+                >
+                    <option
+                        v-for="preset in stylePresets"
+                        :key="preset.value"
+                        :value="preset.value"
+                    >
+                        {{ preset.label }}
+                    </option>
+                    <option value="custom">
+                        Custom (edit instructions)
+                    </option>
+                </SelectInput>
+                <TextArea
+                    id="create-voice-instructions"
+                    v-model="createForm.instructions"
+                    label="Style instructions (optional)"
+                    rows="2"
+                    maxlength="4096"
+                    :error="createForm.errors['voice_config.instructions'] || createForm.errors.voice_config"
+                />
                 <BaseButton
                     type="submit"
                     :disabled="createForm.processing"
@@ -217,6 +317,13 @@ if (props.referenceJobActive) {
                     <p class="mt-1 text-sm text-gray-600">
                         {{ character.description }}
                     </p>
+                    <CharacterVoicePicker
+                        :project-id="project.id"
+                        :character="character"
+                        :voice-groups="voiceGroups"
+                        :style-presets="stylePresets"
+                        :default-voice="defaultVoice"
+                    />
                     <p
                         v-if="character.consistency_notes"
                         class="mt-1 text-xs text-gray-500"

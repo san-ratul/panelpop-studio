@@ -6,6 +6,7 @@ use App\Models\Character;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
 
 class CharacterTest extends TestCase
@@ -32,6 +33,45 @@ class CharacterTest extends TestCase
         $response->assertRedirect(route('characters.index', $project));
         $this->assertSame(1, $project->characters()->count());
         $this->assertSame('Robo', $project->characters()->first()->name);
+    }
+
+    public function test_owner_can_create_a_character_with_a_voice_config(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+
+        $this->actingAs($user)
+            ->post(route('characters.store', $project), $this->validPayload([
+                'voice_config' => [
+                    'voice' => 'shimmer',
+                    'instructions' => 'Voice of a young girl of about six to eight years old: bright, playful and high-pitched, with child-like pronunciation and boundless kid energy.',
+                ],
+            ]))
+            ->assertRedirect(route('characters.index', $project));
+
+        $character = $project->characters()->sole();
+
+        $this->assertSame('shimmer', $character->voice_config['voice']);
+        $this->assertStringContainsString('young girl', $character->voice_config['instructions']);
+    }
+
+    public function test_characters_page_offers_the_grouped_voice_catalog(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $character = Character::factory()->for($project)->create(['name' => 'Pip']);
+
+        $this->actingAs($user)
+            ->get(route('characters.index', $project))
+            ->assertOk()
+            ->assertInertia(
+                fn (InertiaAssert $page) => $page
+                    ->component('Characters/Index')
+                    ->has('voiceGroups')
+                    ->where('voiceGroups.0.label', 'Female voices')
+                    ->has('stylePresets', 10)
+                    ->where('defaultVoice', 'alloy')
+            );
     }
 
     public function test_duplicate_character_name_within_a_project_is_rejected(): void
@@ -78,6 +118,69 @@ class CharacterTest extends TestCase
             ->assertRedirect(route('characters.index', $project));
 
         $this->assertSame(0, $project->characters()->count());
+    }
+
+    public function test_owner_can_save_a_character_voice_config(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $character = Character::factory()->for($project)->create(['name' => 'Pip']);
+
+        $this->actingAs($user)
+            ->patch(route('characters.update', [$project, $character]), $this->validPayload([
+                'voice_config' => [
+                    'voice' => 'coral',
+                    'instructions' => 'Speak in a very happy, upbeat, cheerful tone with bright energy and a light smile in the voice.',
+                    'speed' => 1.1,
+                ],
+            ]))
+            ->assertRedirect(route('characters.index', $project));
+
+        $voiceConfig = $character->refresh()->voice_config;
+
+        $this->assertSame('coral', $voiceConfig['voice']);
+        $this->assertSame(1.1, $voiceConfig['speed']);
+        $this->assertStringContainsString('happy, upbeat', $voiceConfig['instructions']);
+
+        // The edit page must offer the grouped voice catalog and style presets.
+        $this->actingAs($user)
+            ->get(route('characters.edit', [$project, $character]))
+            ->assertOk()
+            ->assertInertia(
+                fn (InertiaAssert $page) => $page
+                    ->component('Characters/Edit')
+                    ->has('voiceGroups')
+                    ->where('voiceGroups.0.label', 'Female voices')
+                    ->where('voiceGroups.0.options.0.value', 'coral')
+                    ->has('stylePresets')
+                    ->where('character.voice_config.voice', 'coral')
+            );
+    }
+
+    public function test_character_voice_config_can_be_cleared_and_rejects_unknown_keys(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $character = Character::factory()->for($project)->create([
+            'name' => 'Pip',
+            'voice_config' => ['voice' => 'coral'],
+        ]);
+
+        $this->actingAs($user)
+            ->patch(route('characters.update', [$project, $character]), $this->validPayload([
+                'voice_config' => ['voice' => 'coral', 'style' => 'happy'],
+            ]))
+            ->assertSessionHasErrors('voice_config');
+
+        $this->assertSame('coral', $character->refresh()->voice_config['voice']);
+
+        $this->actingAs($user)
+            ->patch(route('characters.update', [$project, $character]), $this->validPayload([
+                'voice_config' => null,
+            ]))
+            ->assertRedirect(route('characters.index', $project));
+
+        $this->assertNull($character->refresh()->voice_config);
     }
 
     public function test_another_user_cannot_access_characters_of_a_project(): void

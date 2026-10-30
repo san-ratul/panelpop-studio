@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed, ref, watch } from 'vue';
 import { createRouteResolver } from '@/route.js';
+import FlashBanner from '@/Components/FlashBanner.vue';
 import { buttonVariants } from '@/Components/Form/buttonVariants.js';
 import SidebarIcon from '@/Components/SidebarIcon.vue';
 
@@ -279,24 +280,14 @@ function linkClass(link) {
             </div>
         </aside>
 
-        <div
-            v-if="page.props.flashWarning"
-            class="border-b border-amber-200 bg-amber-50 text-sm text-amber-800 lg:pl-64"
-            role="alert"
-        >
-            <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-                {{ page.props.flashWarning }}
-            </div>
-        </div>
-        <div
-            v-if="page.props.flashSuccess"
-            class="border-b border-emerald-200 bg-emerald-50 text-sm text-emerald-800 lg:pl-64"
-            role="status"
-        >
-            <div class="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-                {{ page.props.flashSuccess }}
-            </div>
-        </div>
+        <FlashBanner
+            :message="page.props.flashWarning ?? ''"
+            variant="warning"
+        />
+        <FlashBanner
+            :message="page.props.flashSuccess ?? ''"
+            variant="success"
+        />
         <main class="lg:pl-64">
             <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                 <slot />

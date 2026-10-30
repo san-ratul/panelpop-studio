@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Support\VoiceCatalog;
 use App\Enums\AssetType;
 use App\Enums\GenerationJobType;
+use App\Enums\PresentationMode;
 use App\Enums\StoryStatus;
 use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Http\Requests\AudioLicenceRequest;
@@ -19,6 +21,7 @@ use App\Services\VoiceGenerationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Enum;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -83,7 +86,8 @@ class ProjectAudioController extends Controller
             'dialogueEnabled' => VoiceGenerationDispatcher::modeAllowsDialogue($project->presentation_mode),
             'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($project->presentation_mode),
             'narrationVoiceConfig' => $project->settings['narration_voice_config'] ?? null,
-            'voiceOptions' => array_values((array) config('ai.openai.tts.voices', [])),
+            'voiceGroups' => VoiceCatalog::voiceGroups(),
+            'stylePresets' => VoiceCatalog::stylePresets(),
             'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
             'hasReadyStory' => ($project->story?->status ?? null) === StoryStatus::Ready,
         ]);
@@ -237,6 +241,33 @@ class ProjectAudioController extends Controller
 
         return redirect()->route('audio.show', $project)
             ->with('success', 'Narration voice saved.');
+    }
+
+    public function updatePresentationMode(Request $request, Project $project): RedirectResponse
+    {
+        $this->authorize('update', $project);
+
+        $data = $request->validate([
+            // Silent modes are intentionally excluded: the audio workspace
+            // exists to produce voice audio, so switching to silent happens
+            // through project settings, not from this page.
+            'presentation_mode' => [
+                'required',
+                new Enum(PresentationMode::class),
+                'in:'.implode(',', [
+                    PresentationMode::Narrator->value,
+                    PresentationMode::Dialogue->value,
+                    PresentationMode::Hybrid->value,
+                ]),
+            ],
+        ]);
+
+        $mode = PresentationMode::from($data['presentation_mode']);
+
+        $project->update(['presentation_mode' => $mode]);
+
+        return redirect()->route('audio.show', $project)
+            ->with('success', sprintf('Presentation mode switched to %s. Run "Generate missing voice audio" to voice everything this mode requires.', $mode->label()));
     }
 
     public function generateNarration(Project $project, Scene $scene): RedirectResponse

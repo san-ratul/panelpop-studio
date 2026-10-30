@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Support\VoiceCatalog;
 use App\Enums\GenerationJobType;
 use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Http\Requests\CharacterRequest;
@@ -32,6 +33,9 @@ class CharacterController extends Controller
             ),
             'referenceJobs' => $referenceJobs,
             'referenceJobActive' => GenerationJobPresenter::hasActive($referenceJobs),
+            'voiceGroups' => VoiceCatalog::voiceGroups(),
+            'stylePresets' => VoiceCatalog::stylePresets(),
+            'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
         ]);
     }
 
@@ -52,7 +56,8 @@ class CharacterController extends Controller
         return Inertia::render('Characters/Edit', [
             'project' => ProjectController::present($project),
             'character' => self::present($character),
-            'voiceOptions' => array_values((array) config('ai.openai.tts.voices', [])),
+            'voiceGroups' => VoiceCatalog::voiceGroups(),
+            'stylePresets' => VoiceCatalog::stylePresets(),
             'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
         ]);
     }

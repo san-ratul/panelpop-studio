@@ -61,7 +61,11 @@ const props = defineProps({
         type: Object,
         default: null,
     },
-    voiceOptions: {
+    voiceGroups: {
+        type: Array,
+        default: () => [],
+    },
+    stylePresets: {
         type: Array,
         default: () => [],
     },
@@ -77,11 +81,41 @@ const props = defineProps({
 
 const generateForm = useForm({});
 
+const switchModeForm = useForm({
+    presentation_mode: 'hybrid',
+});
+
+function detectStylePreset(instructions) {
+    const match = props.stylePresets.find(
+        (preset) => preset.instructions !== '' && preset.instructions === (instructions ?? '').trim(),
+    );
+
+    if (match) {
+        return match.value;
+    }
+
+    return (instructions ?? '').trim() === '' ? 'natural' : 'custom';
+}
+
 const narrationVoiceForm = useForm({
     voice: props.narrationVoiceConfig?.voice ?? '',
+    style: detectStylePreset(props.narrationVoiceConfig?.instructions ?? ''),
     instructions: props.narrationVoiceConfig?.instructions ?? '',
     speed: props.narrationVoiceConfig?.speed ?? '',
 });
+
+// Picking a style preset fills the editable instructions field; "custom"
+// leaves the field untouched.
+watch(
+    () => narrationVoiceForm.style,
+    (style) => {
+        const preset = props.stylePresets.find((option) => option.value === style);
+
+        if (preset) {
+            narrationVoiceForm.instructions = preset.instructions;
+        }
+    },
+);
 
 const uploadForm = useForm({
     type: 'music',
@@ -119,6 +153,27 @@ const allowedUseOptions = [
 const pollTimer = ref(null);
 
 const latestVoiceJob = computed(() => props.voiceJobs[0] ?? null);
+
+const savedDialogueLineCount = computed(
+    () => props.scenes.reduce((count, scene) => count + scene.dialogue_lines.length, 0),
+);
+
+const hasNarrationText = computed(
+    () => props.scenes.some((scene) => (scene.narration_text ?? '').trim() !== ''),
+);
+
+// Saved storyboard content the current mode will not voice: the dispatcher
+// and the render plan both skip it (narration ⇔ narrator/hybrid, dialogue ⇔
+// dialogue/hybrid), so it would silently never generate audio.
+const blockedDialogue = computed(() => !props.silentMode && !props.dialogueEnabled && savedDialogueLineCount.value > 0);
+
+const blockedNarration = computed(() => !props.silentMode && !props.narrationEnabled && hasNarrationText.value);
+
+const modeSwitchNeeded = computed(() => blockedDialogue.value || blockedNarration.value);
+
+function switchToHybridMode() {
+    switchModeForm.patch(route('audio.presentation-mode', props.project.id));
+}
 
 // The narration-voice endpoint validates voice/instructions/speed keys —
 // surface the first one (regression: the page used to read a nonexistent
@@ -188,7 +243,15 @@ function generateLineVoice(scene, line) {
 }
 
 function saveNarrationVoice() {
-    narrationVoiceForm.patch(route('audio.narration-voice', props.project.id));
+    narrationVoiceForm
+        .transform((data) => ({
+            // The endpoint validates voice/instructions/speed only; the
+            // style preset is a UI helper whose text lives in instructions.
+            voice: data.voice === '' ? null : data.voice,
+            instructions: data.instructions,
+            speed: data.speed === '' ? null : data.speed,
+        }))
+        .patch(route('audio.narration-voice', props.project.id));
 }
 
 function onFileChange(event) {
@@ -323,8 +386,42 @@ function formatDuration(ms) {
             </div>
 
             <div class="mt-3">
-                <FieldError :error="generateForm.errors.voice" />
+                <FieldError :error="generateForm.errors.voice || switchModeForm.errors.presentation_mode" />
             </div>
+
+            <div
+                v-if="modeSwitchNeeded"
+                class="mt-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+            >
+                <p class="font-medium">Saved storyboard audio is not voiced in this mode.</p>
+                <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                    <li v-if="blockedDialogue">
+                        {{ savedDialogueLineCount }} dialogue line(s) saved in the storyboard will not get
+                        character audio — the {{ project.presentation_mode }} mode only voices narration.
+                    </li>
+                    <li v-if="blockedNarration">
+                        Scene narration text will not get narration audio — the {{ project.presentation_mode }}
+                        mode only voices dialogue lines.
+                    </li>
+                </ul>
+                <p class="mt-1">
+                    Switch to the hybrid mode to generate narration
+                    <template v-if="blockedDialogue">
+                        and per-character dialogue audio (each line uses the saved voice of its character)
+                    </template>.
+                </p>
+                <div class="mt-3">
+                    <BaseButton
+                        variant="secondary"
+                        size="sm"
+                        :disabled="switchModeForm.processing"
+                        @click="switchToHybridMode"
+                    >
+                        {{ switchModeForm.processing ? 'Switching…' : 'Switch to hybrid mode' }}
+                    </BaseButton>
+                </div>
+            </div>
+
             <p v-if="latestVoiceJob?.error_message" class="mt-3 rounded-md bg-red-50 p-3 text-sm text-red-700">
                 {{ latestVoiceJob.error_message }}
             </p>
@@ -341,9 +438,37 @@ function formatDuration(ms) {
                     v-model="narrationVoiceForm.voice"
                     label="Voice"
                 >
-                    <option value="">Provider default ({{ defaultVoice }})</option>
-                    <option v-for="option in voiceOptions" :key="option.value" :value="option.value">
-                        {{ option.label }}
+                    <option value="">
+                        Provider default ({{ defaultVoice }})
+                    </option>
+                    <optgroup
+                        v-for="group in voiceGroups"
+                        :key="group.label"
+                        :label="group.label"
+                    >
+                        <option
+                            v-for="option in group.options"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </optgroup>
+                </SelectInput>
+                <SelectInput
+                    id="narration-style"
+                    v-model="narrationVoiceForm.style"
+                    label="Voice style"
+                >
+                    <option
+                        v-for="preset in stylePresets"
+                        :key="preset.value"
+                        :value="preset.value"
+                    >
+                        {{ preset.label }}
+                    </option>
+                    <option value="custom">
+                        Custom (edit the instructions field)
                     </option>
                 </SelectInput>
                 <TextInput
@@ -355,10 +480,11 @@ function formatDuration(ms) {
                     min="0.25"
                     max="4"
                 />
-                <TextInput
+                <TextArea
                     id="narration-instructions"
                     v-model="narrationVoiceForm.instructions"
-                    type="text"
+                    class="md:col-span-3"
+                    rows="2"
                     label="Style instructions"
                     maxlength="4096"
                     placeholder="e.g. warm, calm documentary tone"
@@ -427,7 +553,7 @@ function formatDuration(ms) {
                             {{ formatDuration(scene.narration_duration_ms) }}
                         </span>
                     </div>
-                    <ul v-if="dialogueEnabled && scene.dialogue_lines.length > 0" class="mt-4 space-y-2">
+                    <ul v-if="scene.dialogue_lines.length > 0" class="mt-4 space-y-2">
                         <li
                             v-for="line in scene.dialogue_lines"
                             :key="line.id"
@@ -439,7 +565,13 @@ function formatDuration(ms) {
                                         {{ line.character_name ?? 'Unknown character' }}
                                     </p>
                                     <p class="mt-0.5 text-sm text-gray-600">{{ line.text }}</p>
-                                    <p v-if="line.status === 'failed'" class="mt-1 text-sm text-red-600">
+                                    <p
+                                        v-if="!dialogueEnabled"
+                                        class="mt-1 text-sm text-amber-700"
+                                    >
+                                        Not voiced: the {{ project.presentation_mode }} mode skips dialogue audio.
+                                    </p>
+                                    <p v-else-if="line.status === 'failed'" class="mt-1 text-sm text-red-600">
                                         {{ line.error_message ?? 'Voice generation failed.' }}
                                     </p>
                                 </div>
@@ -452,6 +584,7 @@ function formatDuration(ms) {
                                         class="h-8"
                                     />
                                     <BaseButton
+                                        v-if="dialogueEnabled"
                                         variant="secondary"
                                         size="sm"
                                         :disabled="generateForm.processing || voiceJobActive"
