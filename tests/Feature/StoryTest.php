@@ -27,6 +27,34 @@ class StoryTest extends TestCase
         );
     }
 
+    public function test_generated_story_exposes_the_generation_timestamp_the_editor_syncs_on(): void
+    {
+        // Regression: the editor populates its fields automatically when a
+        // generation lands over polling — keyed on generation_meta.generated_at.
+        // Without that key the form stays empty until a manual refresh.
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+
+        Story::factory()->for($project)->create([
+            'status' => StoryStatus::Ready,
+            'generation_meta' => [
+                'provider' => 'fake',
+                'model' => 'fake-text',
+                'generation_job_id' => 1,
+                'generated_at' => '2026-10-30T12:00:00+00:00',
+            ],
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('story.edit', $project))
+            ->assertOk()
+            ->assertInertia(
+                fn ($page) => $page
+                    ->component('Story/Edit')
+                    ->where('story.generation_meta.generated_at', '2026-10-30T12:00:00+00:00')
+            );
+    }
+
     public function test_owner_can_save_a_new_story_and_project_becomes_story_ready(): void
     {
         $user = User::factory()->create();

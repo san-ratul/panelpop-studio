@@ -522,7 +522,7 @@ class ImageGenerationTest extends TestCase
         $this->assertSame(0, Asset::query()->count());
     }
 
-    public function test_duplicate_concurrent_scene_generation_is_blocked(): void
+    public function test_regenerating_supersedes_a_queued_job_for_the_same_scene(): void
     {
         $this->fakeImageDefault();
 
@@ -532,11 +532,66 @@ class ImageGenerationTest extends TestCase
 
         $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
 
+        $superseded = GenerationJob::query()->sole();
+
+        // A second explicit request replaces the live job for the scene
+        // instead of being blocked by it (dedupe stays for ready scenes,
+        // not for explicit user intent).
         $this->from(route('storyboard.show', $this->project))
             ->post(route('scenes.generate-image', [$this->project, $scene]))
-            ->assertSessionHasErrors('image');
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame(1, GenerationJob::query()->count());
+        $superseded->refresh();
+
+        $this->assertSame(GenerationJobStatus::Cancelled, $superseded->status);
+        $this->assertNotNull($superseded->finished_at);
+        $this->assertSame(2, GenerationJob::query()->count());
+
+        $replacement = GenerationJob::query()->whereKeyNot($superseded->id)->sole();
+
+        $this->assertSame(GenerationJobStatus::Queued, $replacement->status);
+        $this->assertSame($scene->id, $replacement->payload['scene_id']);
+    }
+
+    public function test_regenerating_cancels_a_stuck_running_job_and_queues_a_new_one(): void
+    {
+        $this->fakeImageDefault();
+
+        Queue::fake();
+
+        $scene = $this->addScene(1, 'An empty street at dawn.');
+
+        // An aborted request can leave a ledger row stuck in "running"
+        // forever (the sync-driver process was killed mid provider call).
+        // It must not block regeneration until the stale sweep.
+        $stuck = GenerationJob::query()->create([
+            'project_id' => $this->project->id,
+            'type' => GenerationJobType::SceneImage,
+            'status' => GenerationJobStatus::Running,
+            'attempts' => 1,
+            'max_attempts' => 1,
+            'progress' => 10,
+            'payload' => ['scene_id' => $scene->id, 'scene_number' => $scene->number, 'force' => false],
+        ]);
+
+        $this->post(route('scenes.generate-image', [$this->project, $scene]))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $stuck->refresh();
+
+        $this->assertSame(GenerationJobStatus::Cancelled, $stuck->status);
+
+        $replacement = GenerationJob::query()->whereKeyNot($stuck->id)->sole();
+
+        $this->assertSame(GenerationJobStatus::Queued, $replacement->status);
+        $this->assertSame($scene->id, $replacement->payload['scene_id']);
+
+        $scene->refresh();
+
+        $this->assertSame(SceneStatus::ImagePending, $scene->status);
+        $this->assertNull($scene->error_message);
     }
 
     public function test_assets_are_only_accessible_through_the_authorized_endpoint(): void

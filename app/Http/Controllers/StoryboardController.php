@@ -31,7 +31,7 @@ class StoryboardController extends Controller
     {
         $this->authorize('view', $project);
 
-        $scenes = $project->scenes()->with(['dialogueLines.character.audioAsset', 'narrationAudioAsset'])->get()
+        $scenes = $project->scenes()->with(['dialogueLines.character', 'dialogueLines.audioAsset', 'narrationAudioAsset'])->get()
             ->map(static fn ($scene) => SceneController::present($scene))
             ->values()
             ->all();

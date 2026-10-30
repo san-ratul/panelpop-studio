@@ -431,8 +431,7 @@ if (anyJobActive.value) {
                         </div>
                         <button
                             type="button"
-                            class="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
-                            :disabled="imageJobActive"
+                            class="text-xs font-medium text-indigo-600 hover:text-indigo-800"
                             @click="generateSceneImage(scene)"
                         >
                             {{ scene.has_image ? 'Regenerate image' : 'Generate image' }}

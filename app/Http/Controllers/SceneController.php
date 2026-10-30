@@ -12,7 +12,6 @@ use App\Models\Scene;
 use App\Services\GenerationJobGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class SceneController extends Controller
 {
@@ -85,19 +84,12 @@ class SceneController extends Controller
     {
         $this->authorize('update', $scene);
 
-        $this->jobGuard->cancelStaleForSubject($project, GenerationJobType::SceneImage, 'scene_id', $scene->id);
-
-        $active = $this->jobGuard->activeJobForSubject($project, GenerationJobType::SceneImage, 'scene_id', $scene->id);
-
-        if ($active !== null) {
-            throw ValidationException::withMessages([
-                'image' => sprintf(
-                    'Scene %d image generation is already %s. Wait for it to finish.',
-                    $scene->number,
-                    $active->status->value,
-                ),
-            ]);
-        }
+        // Explicit per-scene intent supersedes any live job for this scene:
+        // an aborted request or killed worker leaves a dead queued/running
+        // ledger row that would otherwise block regeneration until the
+        // stale sweep. Cancelling the row is safe — a queue job whose ledger
+        // row is no longer queued exits early (GenerateSceneImageJob::handle).
+        $this->jobGuard->cancelActiveForSubject($project, GenerationJobType::SceneImage, 'scene_id', $scene->id);
 
         // Explicit per-scene action: regenerating a ready scene is intended,
         // so force is set for scenes that already have an image. The pending

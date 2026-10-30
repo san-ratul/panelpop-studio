@@ -115,6 +115,33 @@ final class GenerationJobGuard
     }
 
     /**
+     * Cancels every live (queued/running) job for a subject regardless of
+     * age. Explicit regeneration is user intent and must win immediately:
+     * an aborted request or a killed worker can leave a ledger row stuck in
+     * queued/running for the full stale window, which would otherwise block
+     * all regeneration for that subject. Cancelling the row is safe — a
+     * queue job whose ledger row is no longer queued exits early.
+     */
+    public function cancelActiveForSubject(
+        Project $project,
+        GenerationJobType $type,
+        string $subjectKey,
+        int $subjectId,
+    ): int {
+        return GenerationJob::query()
+            ->where('project_id', $project->id)
+            ->where('type', $type->value)
+            ->where("payload->{$subjectKey}", $subjectId)
+            ->whereIn('status', [GenerationJobStatus::Queued->value, GenerationJobStatus::Running->value])
+            ->update([
+                'status' => GenerationJobStatus::Cancelled->value,
+                'finished_at' => now(),
+                'error_message' => 'Superseded by a newer generation request for this scene.',
+                'error_class' => self::class,
+            ]);
+    }
+
+    /**
      * Creates the ledger job row (queued) and dispatches the queue job after
      * the row is committed. With the sync queue driver the job runs inline;
      * provider failures are then already persisted on the row and swallowed

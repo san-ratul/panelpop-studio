@@ -82,7 +82,18 @@ const storyStatusMeta = computed(() => STORY_STATUS_META[props.story?.status] ??
 });
 
 function submit() {
-    form.put(route('story.save', props.project.id));
+    form.put(route('story.save', props.project.id), {
+        onSuccess: () => {
+            // Reset the dirty baseline to the saved content so the form is
+            // clean again ("Unsaved changes" disappears) and the story sync
+            // below is not blocked by a stale dirty flag.
+            form.defaults({
+                title: form.title,
+                logline: form.logline,
+                full_text: form.full_text,
+            });
+        },
+    });
 }
 
 function generate() {
@@ -126,20 +137,40 @@ watch(
     },
 );
 
-// Populate the editor fields when a generation lands, without ever clobbering
-// unsaved user edits: the sync is skipped while the form is dirty, so edits
-// are preserved through polling and through failed generations.
+// A freshly generated story must land in the editor without a manual
+// refresh. The generation timestamp keys the sync: when a generation lands
+// (a NEW story, i.e. a timestamp we have not synced yet) it overwrites the
+// fields — the user explicitly asked for a new story. Repeated 3-second
+// polls of the SAME story are skipped, so edits made after a sync are never
+// clobbered by polling.
+const syncedStoryKey = ref(null);
+
 watch(
     () => props.story,
     (fresh) => {
-        if (!fresh || form.isDirty) {
+        if (!fresh) {
             return;
         }
+
+        const key = fresh.generation_meta?.generated_at ?? null;
+
+        if (key === null || key === syncedStoryKey.value) {
+            return;
+        }
+
+        syncedStoryKey.value = key;
 
         form.title = fresh.title ?? '';
         form.logline = fresh.logline ?? '';
         form.full_text = fresh.full_text ?? '';
+
+        form.defaults({
+            title: form.title,
+            logline: form.logline,
+            full_text: form.full_text,
+        });
     },
+    { immediate: true },
 );
 
 onBeforeUnmount(stopPolling);

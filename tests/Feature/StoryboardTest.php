@@ -3,6 +3,9 @@
 namespace Tests\Feature;
 
 use App\Enums\ProjectStatus;
+use App\Models\Asset;
+use App\Models\Character;
+use App\Models\DialogueLine;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Story;
@@ -29,6 +32,36 @@ class StoryboardTest extends TestCase
                 ->where('durationTotal', 60.5)
                 ->where('toleranceSeconds', fn ($value) => (float) $value === 2.0)
                 ->has('scenes', 2)
+        );
+    }
+
+    public function test_storyboard_presents_dialogue_lines_with_character_and_audio_meta(): void
+    {
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $scene = Scene::factory()->for($project)->create(['number' => 1, 'duration_seconds' => 30]);
+        $character = Character::factory()->for($project)->create(['name' => 'Robo']);
+        $audio = Asset::factory()->for($project)->create([
+            'type' => 'voice_audio',
+            'mime' => 'audio/mpeg',
+            'original_filename' => 'line.mp3',
+            'meta' => ['duration_ms' => 2400, 'exceeds_scene_duration' => true],
+        ]);
+        DialogueLine::factory()->for($scene)->for($character, 'character')->create([
+            'audio_asset_id' => $audio->id,
+            'status' => 'ready',
+        ]);
+
+        $response = $this->actingAs($user)->get(route('storyboard.show', $project));
+
+        $response->assertOk();
+        $response->assertInertia(
+            fn ($page) => $page->component('Storyboard/Show')
+                ->has('scenes', 1)
+                ->has('scenes.0.dialogue_lines', 1)
+                ->where('scenes.0.dialogue_lines.0.character_name', 'Robo')
+                ->where('scenes.0.dialogue_lines.0.audio_duration_ms', 2400)
+                ->where('scenes.0.dialogue_lines.0.audio_exceeds_scene_duration', true)
         );
     }
 
