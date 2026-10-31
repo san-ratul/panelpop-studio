@@ -13,8 +13,14 @@ const props = defineProps({
     },
     // Project context (id + title) supplied by project-scoped pages so the
     // sidebar can expose the workspace sections of the routes that exist for
-    // this project (story editor, storyboard, characters, audio, render).
+    // this project.
     project: {
+        type: Object,
+        default: null,
+    },
+    // Video context (id + title) supplied by video-scoped pages (story,
+    // storyboard, audio, render); the pipeline sections target this video.
+    video: {
         type: Object,
         default: null,
     },
@@ -35,11 +41,27 @@ const productLinks = computed(() => {
 
     if (props.project) {
         links.push(
-            { label: 'Story', href: route('story.edit', props.project.id), icon: 'story', components: ['Story/Edit'] },
-            { label: 'Storyboard', href: route('storyboard.show', props.project.id), icon: 'storyboard', components: ['Storyboard/Show'] },
+            { label: 'Videos', href: route('videos.index', props.project.id), icon: 'storyboard', components: ['Videos/Index', 'Videos/Create', 'Videos/Edit'] },
+        );
+    }
+
+    if (props.project && props.video) {
+        links.push(
+            { label: 'Story', href: route('story.edit', [props.project.id, props.video.id]), icon: 'story', components: ['Story/Edit'] },
+            { label: 'Storyboard', href: route('storyboard.show', [props.project.id, props.video.id]), icon: 'storyboard', components: ['Storyboard/Show'] },
+        );
+    }
+
+    if (props.project) {
+        links.push(
             { label: 'Characters', href: route('characters.index', props.project.id), icon: 'characters', components: ['Characters/Index', 'Characters/Edit'] },
-            { label: 'Audio', href: route('audio.show', props.project.id), icon: 'audio', components: ['Audio/Show'] },
-            { label: 'Render', href: route('render.show', props.project.id), icon: 'render', components: ['Render/Show'] },
+        );
+    }
+
+    if (props.project && props.video) {
+        links.push(
+            { label: 'Audio', href: route('audio.show', [props.project.id, props.video.id]), icon: 'audio', components: ['Audio/Show'] },
+            { label: 'Render', href: route('render.show', [props.project.id, props.video.id]), icon: 'render', components: ['Render/Show'] },
         );
     }
 

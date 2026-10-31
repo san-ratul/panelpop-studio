@@ -19,8 +19,8 @@ const page = usePage();
 
 const isAdmin = computed(() => Boolean((props.authUser ?? page.props.auth?.user)?.is_admin));
 
-const totalScenes = computed(() =>
-    props.projects.reduce((sum, project) => sum + (Number(project.scene_count) || 0), 0),
+const totalVideos = computed(() =>
+    props.projects.reduce((sum, project) => sum + (Number(project.video_count) || 0), 0),
 );
 
 const statusColors = {
@@ -59,7 +59,7 @@ function formatDate(iso) {
                 </h1>
                 <p class="mt-1 text-sm text-gray-600">
                     {{ projects.length }} {{ projects.length === 1 ? 'project' : 'projects' }} ·
-                    {{ totalScenes }} {{ totalScenes === 1 ? 'scene' : 'scenes' }} planned
+                    {{ totalVideos }} {{ totalVideos === 1 ? 'video' : 'videos' }} planned
                 </p>
             </div>
             <Link
@@ -154,8 +154,8 @@ function formatDate(iso) {
                         <dd>{{ project.target_duration_seconds }} s</dd>
                     </div>
                     <div class="flex justify-between">
-                        <dt>Scenes</dt>
-                        <dd>{{ project.scene_count }}</dd>
+                        <dt>Videos</dt>
+                        <dd>{{ project.video_count }}</dd>
                     </div>
                     <div class="flex justify-between">
                         <dt>Style</dt>
@@ -164,10 +164,10 @@ function formatDate(iso) {
                 </dl>
                 <div class="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-gray-100 pt-3 text-sm">
                     <Link
-                        :href="route('story.edit', project.id)"
+                        :href="route('videos.index', project.id)"
                         class="font-medium text-indigo-600 hover:text-indigo-800"
                     >
-                        Story
+                        Videos
                     </Link>
                     <Link
                         :href="route('characters.index', project.id)"

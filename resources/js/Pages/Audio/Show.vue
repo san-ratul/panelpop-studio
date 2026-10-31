@@ -21,6 +21,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    video: {
+        type: Object,
+        required: true,
+    },
     scenes: {
         type: Array,
         default: () => [],
@@ -60,6 +64,10 @@ const props = defineProps({
     narrationVoiceConfig: {
         type: Object,
         default: null,
+    },
+    narrationVoiceInherited: {
+        type: Boolean,
+        default: false,
     },
     voiceGroups: {
         type: Array,
@@ -172,7 +180,7 @@ const blockedNarration = computed(() => !props.silentMode && !props.narrationEna
 const modeSwitchNeeded = computed(() => blockedDialogue.value || blockedNarration.value);
 
 function switchToHybridMode() {
-    switchModeForm.patch(route('audio.presentation-mode', props.project.id));
+    switchModeForm.patch(route('audio.presentation-mode', [props.project.id, props.video.id]));
 }
 
 // The narration-voice endpoint validates voice/instructions/speed keys —
@@ -225,19 +233,19 @@ if (props.voiceJobActive) {
 }
 
 function generateVoice() {
-    generateForm.post(route('audio.generate', props.project.id), {
+    generateForm.post(route('audio.generate', [props.project.id, props.video.id]), {
         onSuccess: () => startPolling(),
     });
 }
 
 function generateNarration(scene) {
-    useForm({}).post(route('scenes.generate-narration', [props.project.id, scene.id]), {
+    useForm({}).post(route('scenes.generate-narration', [props.project.id, props.video.id, scene.id]), {
         onSuccess: () => startPolling(),
     });
 }
 
 function generateLineVoice(scene, line) {
-    useForm({}).post(route('dialogue-lines.generate-voice', [props.project.id, scene.id, line.id]), {
+    useForm({}).post(route('dialogue-lines.generate-voice', [props.project.id, props.video.id, scene.id, line.id]), {
         onSuccess: () => startPolling(),
     });
 }
@@ -251,7 +259,18 @@ function saveNarrationVoice() {
             instructions: data.instructions,
             speed: data.speed === '' ? null : data.speed,
         }))
-        .patch(route('audio.narration-voice', props.project.id));
+        .patch(route('audio.narration-voice', [props.project.id, props.video.id]));
+}
+
+function resetNarrationVoice() {
+    narrationVoiceForm
+        .transform(() => ({
+            inherit: true,
+            voice: null,
+            instructions: '',
+            speed: null,
+        }))
+        .patch(route('audio.narration-voice', [props.project.id, props.video.id]));
 }
 
 function onFileChange(event) {
@@ -259,7 +278,7 @@ function onFileChange(event) {
 }
 
 function submitUpload() {
-    uploadForm.post(route('audio.upload', props.project.id), {
+    uploadForm.post(route('audio.upload', [props.project.id, props.video.id]), {
         forceFormData: true,
         onSuccess: () => {
             uploadForm.reset();
@@ -298,7 +317,7 @@ function saveLicence(asset) {
                 .filter(Boolean),
             licence_verified: data.licence_verified ? 1 : 0,
         }))
-        .patch(route('audio-assets.update-licence', [props.project.id, asset.id]), {
+        .patch(route('audio-assets.update-licence', [props.project.id, props.video.id, asset.id]), {
             onSuccess: () => {
                 editingLicenceId.value = null;
             },
@@ -307,7 +326,7 @@ function saveLicence(asset) {
 
 function destroyAsset(asset) {
     if (confirm(`Delete "${asset.original_filename}" and its licence record?`)) {
-        useForm({}).delete(route('audio-assets.destroy', [props.project.id, asset.id]));
+        useForm({}).delete(route('audio-assets.destroy', [props.project.id, props.video.id, asset.id]));
     }
 }
 
@@ -321,18 +340,30 @@ function formatDuration(ms) {
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser" :project="project">
+    <AppLayout :auth-user="authUser" :project="project" :video="video">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Audio</h1>
                 <p class="mt-1 text-sm text-gray-600">
-                    {{ project.title }} — mode:
-                    <span class="font-medium text-gray-900">{{ project.presentation_mode }}</span>
+                    {{ project.title }} — Audio workflow (this video):
+                    <span class="font-medium text-gray-900">{{ video.effective_presentation_mode }}</span>
+                    <span
+                        v-if="video.presentation_mode_override === null"
+                        class="ml-1 text-gray-500"
+                    >
+                        (project default)
+                    </span>
+                    <span
+                        v-else
+                        class="ml-1 text-gray-500"
+                    >
+                        (video override)
+                    </span>
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <Link
-                    :href="route('storyboard.show', project.id)"
+                    :href="route('storyboard.show', [project.id, video.id])"
                     :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Storyboard
@@ -344,7 +375,7 @@ function formatDuration(ms) {
                     Characters
                 </Link>
                 <Link
-                    :href="route('render.show', project.id)"
+                    :href="route('render.show', [project.id, video.id])"
                     :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Render
@@ -353,9 +384,9 @@ function formatDuration(ms) {
         </div>
 
         <div v-if="silentMode" class="mt-6 rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-            This project mode (<span class="font-semibold">{{ project.presentation_mode }}</span>) is silent: no
-            narration, dialogue, or music is used, and no audio provider is ever called. Rendering produces a
-            video-only MP4.
+            This video's audio workflow (<span class="font-semibold">{{ video.effective_presentation_mode }}</span>) is
+            silent: no narration, dialogue, or music is used, and no audio provider is ever called. Rendering produces
+            a video-only MP4.
         </div>
 
         <section v-else class="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -397,10 +428,10 @@ function formatDuration(ms) {
                 <ul class="mt-1 list-disc space-y-0.5 pl-5">
                     <li v-if="blockedDialogue">
                         {{ savedDialogueLineCount }} dialogue line(s) saved in the storyboard will not get
-                        character audio — the {{ project.presentation_mode }} mode only voices narration.
+                        character audio — the {{ video.effective_presentation_mode }} mode only voices narration.
                     </li>
                     <li v-if="blockedNarration">
-                        Scene narration text will not get narration audio — the {{ project.presentation_mode }}
+                        Scene narration text will not get narration audio — the {{ video.effective_presentation_mode }}
                         mode only voices dialogue lines.
                     </li>
                 </ul>
@@ -428,9 +459,15 @@ function formatDuration(ms) {
         </section>
 
         <section v-if="narrationEnabled" class="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 class="text-lg font-semibold text-gray-900">Narration voice</h2>
+            <h2 class="text-lg font-semibold text-gray-900">Narration voice (this video)</h2>
             <p class="mt-1 text-sm text-gray-600">
-                Voice used for scene narration blocks. Leave empty to use the provider default ({{ defaultVoice }}).
+                Voice used for this video's scene narration blocks. Leave empty to use the provider default ({{ defaultVoice }}).
+            </p>
+            <p
+                v-if="narrationVoiceInherited"
+                class="mt-1 text-sm font-medium text-indigo-600"
+            >
+                Currently inherited from the project default.
             </p>
             <div class="mt-4 grid gap-4 md:grid-cols-3">
                 <SelectInput
@@ -490,12 +527,20 @@ function formatDuration(ms) {
                     placeholder="e.g. warm, calm documentary tone"
                 />
             </div>
-            <div class="mt-4">
+            <div class="mt-4 flex flex-wrap items-center gap-3">
                 <BaseButton
                     :disabled="narrationVoiceForm.processing"
                     @click="saveNarrationVoice"
                 >
                     Save narration voice
+                </BaseButton>
+                <BaseButton
+                    v-if="!narrationVoiceInherited"
+                    variant="secondary"
+                    :disabled="narrationVoiceForm.processing"
+                    @click="resetNarrationVoice"
+                >
+                    Reset to project default
                 </BaseButton>
             </div>
             <div class="mt-2">
@@ -560,17 +605,31 @@ function formatDuration(ms) {
                             class="rounded-md bg-gray-50 p-3"
                         >
                             <div class="flex flex-wrap items-center justify-between gap-3">
-                                <div class="min-w-0">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
                                     <p class="text-sm font-medium text-gray-900">
                                         {{ line.character_name ?? 'Unknown character' }}
                                     </p>
-                                    <p class="mt-0.5 text-sm text-gray-600">{{ line.text }}</p>
-                                    <p
-                                        v-if="!dialogueEnabled"
-                                        class="mt-1 text-sm text-amber-700"
+                                    <span
+                                        v-if="line.emotion"
+                                        class="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
                                     >
-                                        Not voiced: the {{ project.presentation_mode }} mode skips dialogue audio.
-                                    </p>
+                                        {{ line.emotion }}
+                                    </span>
+                                </div>
+                                <p class="mt-0.5 text-sm text-gray-600">{{ line.text }}</p>
+                                <p
+                                    v-if="line.voice_instructions"
+                                    class="mt-0.5 text-xs text-gray-500"
+                                >
+                                    {{ line.voice_instructions }}
+                                </p>
+                                <p
+                                    v-if="!dialogueEnabled"
+                                    class="mt-1 text-sm text-amber-700"
+                                >
+                                    Not voiced: the {{ video.effective_presentation_mode }} mode skips dialogue audio.
+                                </p>
                                     <p v-else-if="line.status === 'failed'" class="mt-1 text-sm text-red-600">
                                         {{ line.error_message ?? 'Voice generation failed.' }}
                                     </p>

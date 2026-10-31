@@ -1,12 +1,13 @@
 <script setup>
-import { Link, useForm } from '@inertiajs/vue3';
+import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BaseButton from '@/Components/Form/BaseButton.vue';
+import CharacterVoicePicker from '@/Components/CharacterVoicePicker.vue';
 import FieldError from '@/Components/Form/FieldError.vue';
-import SelectInput from '@/Components/Form/SelectInput.vue';
 import TextArea from '@/Components/Form/TextArea.vue';
 import TextInput from '@/Components/Form/TextInput.vue';
+import { createRouteResolver } from '@/route.js';
 
 const props = defineProps({
     authUser: {
@@ -35,6 +36,10 @@ const props = defineProps({
     },
 });
 
+const page = usePage();
+
+const route = createRouteResolver(page.props.routes);
+
 function detectStylePreset(instructions) {
     const match = props.stylePresets.find(
         (preset) => preset.instructions !== '' && preset.instructions === (instructions ?? '').trim(),
@@ -47,18 +52,27 @@ function detectStylePreset(instructions) {
     return (instructions ?? '').trim() === '' ? 'natural' : 'custom';
 }
 
+function presetInstructions(style) {
+    const preset = props.stylePresets.find((option) => option.value === style);
+
+    return (preset?.instructions ?? '').trim();
+}
+
+// Hidden: kept in sync with the selected preset; only preserved verbatim
+// when the saved instructions match no preset ("custom").
+const savedInstructions = (props.character.voice_config?.instructions ?? '').trim();
+
 const form = useForm({
     name: props.character.name,
     description: props.character.description,
     consistency_notes: props.character.consistency_notes ?? '',
     voice: props.character.voice_config?.voice ?? '',
-    style: detectStylePreset(props.character.voice_config?.instructions ?? ''),
-    instructions: props.character.voice_config?.instructions ?? '',
-    speed: props.character.voice_config?.speed ?? '',
+    style: detectStylePreset(savedInstructions),
+    instructions: savedInstructions,
 });
 
-// Picking a style preset fills the editable instructions field; "custom"
-// leaves the field untouched.
+// Picking a style preset derives the saved instructions from it; "custom"
+// (only reachable when the saved instructions match no preset) keeps them.
 watch(
     () => form.style,
     (style) => {
@@ -71,6 +85,10 @@ watch(
 );
 
 function submit() {
+    const instructions = form.style === 'custom'
+        ? savedInstructions
+        : presetInstructions(form.style);
+
     form
         .transform((data) => ({
             name: data.name,
@@ -78,8 +96,7 @@ function submit() {
             consistency_notes: data.consistency_notes,
             voice_config: {
                 voice: data.voice === '' ? null : data.voice,
-                instructions: (data.instructions ?? '').trim() === '' ? null : data.instructions.trim(),
-                speed: data.speed === '' ? null : data.speed,
+                instructions: instructions === '' ? null : instructions,
             },
         }))
         .patch(route('characters.update', [props.project.id, props.character.id]));
@@ -127,7 +144,7 @@ function submit() {
                 :error="form.errors.consistency_notes"
             />
 
-            <fieldset class="space-y-4 rounded-md border border-gray-200 bg-gray-50 p-4">
+            <fieldset class="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4">
                 <legend class="px-1 text-sm font-semibold text-gray-700">
                     Voice for dialogue audio
                 </legend>
@@ -137,68 +154,16 @@ function submit() {
                     voices have no child voice — pick any voice plus a "Kids voice" style
                     to make it sound child-like.
                 </p>
-                <SelectInput
-                    id="character-voice"
-                    v-model="form.voice"
-                    label="Voice"
-                >
-                    <option value="">
-                        Provider default ({{ defaultVoice }})
-                    </option>
-                    <optgroup
-                        v-for="group in voiceGroups"
-                        :key="group.label"
-                        :label="group.label"
-                    >
-                        <option
-                            v-for="option in group.options"
-                            :key="option.value"
-                            :value="option.value"
-                        >
-                            {{ option.label }}
-                        </option>
-                    </optgroup>
-                </SelectInput>
-                <SelectInput
-                    id="character-voice-style"
-                    v-model="form.style"
-                    label="Voice style"
-                >
-                    <option
-                        v-for="preset in stylePresets"
-                        :key="preset.value"
-                        :value="preset.value"
-                    >
-                        {{ preset.label }}
-                    </option>
-                    <option value="custom">
-                        Custom (edit the instructions field)
-                    </option>
-                </SelectInput>
-                <TextInput
-                    id="character-voice-speed"
-                    v-model="form.speed"
-                    type="number"
-                    label="Speed (0.25–4.0)"
-                    step="0.05"
-                    min="0.25"
-                    max="4"
-                    :error="form.errors['voice_config.speed']"
+                <CharacterVoicePicker
+                    v-model:voice="form.voice"
+                    v-model:style="form.style"
+                    :project-id="project.id"
+                    :voice-groups="voiceGroups"
+                    :style-presets="stylePresets"
+                    :default-voice="defaultVoice"
                 />
-                <TextArea
-                    id="character-voice-instructions"
-                    v-model="form.instructions"
-                    label="Style instructions"
-                    rows="2"
-                    maxlength="4096"
-                    placeholder="e.g. sing the lines like a cheerful nursery rhyme"
-                    :error="form.errors['voice_config.instructions']"
-                />
+                <FieldError :error="form.errors['voice_config.voice'] || form.errors['voice_config.instructions'] || form.errors.voice_config" />
             </fieldset>
-
-            <div>
-                <FieldError :error="form.errors['voice_config.voice'] || form.errors.voice_config" />
-            </div>
 
             <BaseButton
                 type="submit"

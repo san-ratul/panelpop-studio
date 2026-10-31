@@ -3,6 +3,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BaseButton from '@/Components/Form/BaseButton.vue';
+import CollapsibleSection from '@/Components/CollapsibleSection.vue';
 import FieldError from '@/Components/Form/FieldError.vue';
 import SelectInput from '@/Components/Form/SelectInput.vue';
 import TextArea from '@/Components/Form/TextArea.vue';
@@ -15,6 +16,10 @@ const props = defineProps({
         default: null,
     },
     project: {
+        type: Object,
+        required: true,
+    },
+    video: {
         type: Object,
         required: true,
     },
@@ -55,6 +60,10 @@ const props = defineProps({
         default: false,
     },
     videoMetadata: {
+        type: Object,
+        default: null,
+    },
+    cost: {
         type: Object,
         default: null,
     },
@@ -107,7 +116,7 @@ function generateMetadata() {
     // useForm ignores the visit "data" option — serialize via transform.
     generateMetadataForm
         .transform(() => ({ platform: metadataForm.platform }))
-        .post(route('render.metadata.generate', props.project.id));
+        .post(route('render.metadata.generate', [props.project.id, props.video.id]));
 }
 
 function saveMetadata() {
@@ -117,7 +126,7 @@ function saveMetadata() {
             title: data.title.trim(),
             description: data.description.trim(),
         }))
-        .patch(route('render.metadata.update', props.project.id));
+        .patch(route('render.metadata.update', [props.project.id, props.video.id]));
 }
 
 async function copyMetadata(field) {
@@ -182,6 +191,12 @@ function formatDuration(ms) {
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+function formatMoney(amount) {
+    const value = Number(amount ?? 0);
+
+    return `$${(Number.isFinite(value) ? value : 0).toFixed(6)}`;
+}
+
 function startPolling() {
     if (pollTimer.value !== null) {
         return;
@@ -189,7 +204,7 @@ function startPolling() {
 
     pollTimer.value = setInterval(() => {
         router.reload({
-            only: ['renderJobs', 'renderJobActive', 'videoAsset', 'thumbnailAsset', 'subtitleAsset', 'canRender', 'project'],
+            only: ['renderJobs', 'renderJobActive', 'videoAsset', 'thumbnailAsset', 'subtitleAsset', 'canRender', 'project', 'video', 'cost'],
         });
     }, 3000);
 }
@@ -223,37 +238,49 @@ if (props.renderJobActive) {
 }
 
 function startRender() {
-    renderForm.post(route('render.store', props.project.id), {
+    renderForm.post(route('render.store', [props.project.id, props.video.id]), {
         onSuccess: () => startPolling(),
     });
 }
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser" :project="project">
+    <AppLayout :auth-user="authUser" :project="project" :video="video">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-semibold text-gray-900">Render</h1>
                 <p class="mt-1 text-sm text-gray-600">
-                    {{ project.title }} — mode:
-                    <span class="font-medium text-gray-900">{{ project.presentation_mode }}</span>
+                    {{ project.title }} — Audio workflow (this video):
+                    <span class="font-medium text-gray-900">{{ video.effective_presentation_mode }}</span>
+                    <span
+                        v-if="video.presentation_mode_override === null"
+                        class="ml-1 text-gray-500"
+                    >
+                        (project default)
+                    </span>
+                    <span
+                        v-else
+                        class="ml-1 text-gray-500"
+                    >
+                        (video override)
+                    </span>
                     <span
                         class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
-                        :class="project.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'"
+                        :class="video.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'"
                     >
-                        {{ project.status }}
+                        {{ video.status }}
                     </span>
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <Link
-                    :href="route('storyboard.show', project.id)"
+                    :href="route('storyboard.show', [project.id, video.id])"
                     :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Storyboard
                 </Link>
                 <Link
-                    :href="route('audio.show', project.id)"
+                    :href="route('audio.show', [project.id, video.id])"
                     :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Audio
@@ -529,12 +556,94 @@ function startRender() {
                         </li>
                     </ul>
                     <Link
-                        :href="route('audio.show', project.id)"
+                        :href="route('audio.show', [project.id, video.id])"
                         class="mt-3 inline-block text-sm font-medium text-amber-900 underline"
                     >
                         Fix licences in the audio workspace
                     </Link>
                 </section>
+
+                <CollapsibleSection
+                    v-if="cost"
+                    title="Generation cost"
+                    section-key="render-generation-cost"
+                    :default-expanded="false"
+                >
+                    <p class="text-sm text-gray-600">
+                        Provider and infrastructure spend for this video. Amounts in {{ cost.currency }}.
+                    </p>
+                    <dl class="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                        <div class="flex items-baseline justify-between gap-3 sm:col-span-2">
+                            <dt class="text-sm font-medium text-gray-900">
+                                Total generation cost (actual + estimated)
+                            </dt>
+                            <dd class="text-sm font-semibold text-gray-900">
+                                {{ formatMoney(cost.total_generation_cost) }}
+                            </dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Actual</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.actual) }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Estimated</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.estimated) }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Unconfirmed</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.unconfirmed) }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Legacy (unclassified)</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.legacy_unclassified) }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Retry (attempt &gt; 1, not additive)</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.retry) }}</dd>
+                        </div>
+                        <div class="flex items-baseline justify-between gap-3">
+                            <dt class="text-sm text-gray-600">Infrastructure (render, storage, bandwidth)</dt>
+                            <dd class="text-sm text-gray-900">{{ formatMoney(cost.infrastructure) }}</dd>
+                        </div>
+                    </dl>
+                    <p class="mt-2 text-xs text-gray-500">
+                        {{ cost.calls }} provider call(s), {{ cost.rejected_calls }} rejected before execution
+                        (never priced as spend).
+                    </p>
+                    <div
+                        v-if="cost.infrastructure_detail"
+                        class="mt-3 rounded-md bg-gray-50 p-3 text-xs text-gray-600"
+                    >
+                        <p>
+                            Render wall time: {{ cost.infrastructure_detail.render_wall_seconds }} s
+                            ({{ formatMoney(cost.infrastructure_detail.render_cost) }})
+                        </p>
+                        <p>
+                            Stored artifacts: {{ formatSize(cost.infrastructure_detail.stored_bytes) ?? '0 KB' }}
+                            ({{ formatMoney(cost.infrastructure_detail.storage_cost_per_day) }}/day)
+                        </p>
+                        <p>
+                            Downloaded: {{ formatSize(cost.infrastructure_detail.downloaded_bytes) ?? '0 KB' }}
+                            ({{ formatMoney(cost.infrastructure_detail.bandwidth_cost) }})
+                        </p>
+                    </div>
+                    <div class="mt-4 space-y-1 text-xs text-gray-500">
+                        <p>
+                            Actual = provider-reported/derived usage; Estimated = confirmed charges without provider
+                            usage payload; Unconfirmed = estimates on calls that may not have completed; Legacy =
+                            pre-accounting rows (not counted in total).
+                        </p>
+                        <p v-if="cost.note_estimated">
+                            {{ cost.note_estimated }}
+                        </p>
+                        <p v-if="cost.note_unconfirmed">
+                            {{ cost.note_unconfirmed }}
+                        </p>
+                        <p v-if="cost.note_legacy">
+                            {{ cost.note_legacy }}
+                        </p>
+                    </div>
+                </CollapsibleSection>
             </div>
         </div>
     </AppLayout>

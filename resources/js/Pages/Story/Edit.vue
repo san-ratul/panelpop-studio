@@ -17,6 +17,10 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    video: {
+        type: Object,
+        required: true,
+    },
     story: {
         type: Object,
         default: null,
@@ -82,7 +86,7 @@ const storyStatusMeta = computed(() => STORY_STATUS_META[props.story?.status] ??
 });
 
 function submit() {
-    form.put(route('story.save', props.project.id), {
+    form.put(route('story.save', [props.project.id, props.video.id]), {
         onSuccess: () => {
             // Reset the dirty baseline to the saved content so the form is
             // clean again ("Unsaved changes" disappears) and the story sync
@@ -97,13 +101,13 @@ function submit() {
 }
 
 function generate() {
-    generateForm.post(route('story.generate', props.project.id), {
+    generateForm.post(route('story.generate', [props.project.id, props.video.id]), {
         onSuccess: () => startPolling(),
     });
 }
 
 function generatePlan() {
-    planForm.post(route('storyboard.generate-plan', props.project.id));
+    planForm.post(route('storyboard.generate-plan', [props.project.id, props.video.id]));
 }
 
 function startPolling() {
@@ -181,7 +185,11 @@ if (props.storyJobActive || props.planJobActive) {
 </script>
 
 <template>
-    <AppLayout :auth-user="authUser" :project="project">
+    <AppLayout
+        :auth-user="authUser"
+        :project="project"
+        :video="video"
+    >
         <div class="mx-auto max-w-3xl">
             <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -189,17 +197,17 @@ if (props.storyJobActive || props.planJobActive) {
                         Story Editor
                     </h1>
                     <p class="mt-1 text-sm text-gray-600">
-                        {{ project.title }}
+                        {{ video.title }}
                         <span
-                            v-if="project.presentation_mode"
+                            v-if="video.effective_presentation_mode"
                             class="text-gray-400"
                         >
-                            · {{ project.presentation_mode.replaceAll('_', ' ') }} · {{ project.target_duration_seconds }} s target
+                            · {{ video.effective_presentation_mode.replaceAll('_', ' ') }} · {{ video.target_duration_seconds }} s target
                         </span>
                     </p>
                 </div>
                 <Link
-                    :href="route('storyboard.show', project.id)"
+                    :href="route('storyboard.show', [project.id, video.id])"
                     :class="buttonVariants({ variant: 'secondary' })"
                 >
                     Open storyboard
@@ -219,7 +227,7 @@ if (props.storyJobActive || props.planJobActive) {
                 </h2>
                 <p class="mt-2 text-sm leading-relaxed text-gray-600">
                     Describe your idea in a sentence or two. The configured AI text provider writes a title,
-                    a logline and the full story for a {{ project.target_duration_seconds }} second video.
+                    a logline and the full story for a {{ video.target_duration_seconds }} second video.
                     You can edit everything below before saving.
                 </p>
 
@@ -438,7 +446,7 @@ if (props.storyJobActive || props.planJobActive) {
                 <p class="mt-2 text-sm leading-relaxed text-gray-600">
                     Once your story is ready, let the AI split it into timed scenes with visuals,
                     narration and dialogue. You will review and fine-tune the plan on the storyboard,
-                    where scene durations must total {{ project.target_duration_seconds }} s (±2 s) before completion.
+                    where scene durations must total {{ video.target_duration_seconds }} s (±2 s) before completion.
                 </p>
                 <div class="mt-4 flex flex-wrap items-center gap-3">
                     <BaseButton

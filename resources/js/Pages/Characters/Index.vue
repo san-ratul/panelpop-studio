@@ -1,12 +1,13 @@
 <script setup>
-import { Link, router, useForm } from '@inertiajs/vue3';
+import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BaseButton from '@/Components/Form/BaseButton.vue';
 import CharacterVoicePicker from '@/Components/CharacterVoicePicker.vue';
-import SelectInput from '@/Components/Form/SelectInput.vue';
+import CollapsibleSection from '@/Components/CollapsibleSection.vue';
 import TextArea from '@/Components/Form/TextArea.vue';
 import TextInput from '@/Components/Form/TextInput.vue';
+import { createRouteResolver } from '@/route.js';
 
 const props = defineProps({
     authUser: {
@@ -43,6 +44,10 @@ const props = defineProps({
     },
 });
 
+const page = usePage();
+
+const route = createRouteResolver(page.props.routes);
+
 function detectStylePreset(instructions) {
     const match = props.stylePresets.find(
         (preset) => preset.instructions !== '' && preset.instructions === (instructions ?? '').trim(),
@@ -55,31 +60,53 @@ function detectStylePreset(instructions) {
     return (instructions ?? '').trim() === '' ? 'natural' : 'custom';
 }
 
+function styleLabel(instructions) {
+    const preset = detectStylePreset(instructions);
+
+    if (preset === 'custom') {
+        return 'Custom';
+    }
+
+    const match = props.stylePresets.find((option) => option.value === preset);
+
+    return match ? match.label : 'Natural';
+}
+
+function voiceLabel(voice) {
+    if ((voice ?? '') === '') {
+        return `Provider default (${props.defaultVoice})`;
+    }
+
+    for (const group of props.voiceGroups) {
+        const option = group.options.find((candidate) => candidate.value === voice);
+
+        if (option) {
+            return option.label;
+        }
+    }
+
+    return voice;
+}
+
+function presetInstructions(style) {
+    const preset = props.stylePresets.find((option) => option.value === style);
+
+    return (preset?.instructions ?? '').trim();
+}
+
 const createForm = useForm({
     name: '',
     description: '',
     consistency_notes: '',
     voice: '',
     style: 'natural',
-    instructions: '',
 });
-
-// Picking a style preset fills the editable instructions field; "custom"
-// leaves the field untouched.
-watch(
-    () => createForm.style,
-    (style) => {
-        const preset = props.stylePresets.find((option) => option.value === style);
-
-        if (preset) {
-            createForm.instructions = preset.instructions;
-        }
-    },
-);
 
 const referenceForm = useForm({});
 
 function submitCreate() {
+    const instructions = presetInstructions(createForm.style);
+
     createForm
         .transform((data) => ({
             name: data.name,
@@ -87,7 +114,7 @@ function submitCreate() {
             consistency_notes: data.consistency_notes,
             voice_config: {
                 voice: data.voice === '' ? null : data.voice,
-                instructions: (data.instructions ?? '').trim() === '' ? null : data.instructions.trim(),
+                instructions: instructions === '' ? null : instructions,
             },
         }))
         .post(route('characters.store', props.project.id), {
@@ -196,109 +223,84 @@ if (props.referenceJobActive) {
             </p>
         </div>
 
-        <div class="mt-6 grid gap-6 lg:grid-cols-2">
-            <form
-                class="space-y-4 rounded-lg border border-gray-200 bg-white p-6"
-                @submit.prevent="submitCreate"
+        <form
+            class="mt-6 max-w-2xl space-y-4 rounded-lg border border-gray-200 bg-white p-6"
+            @submit.prevent="submitCreate"
+        >
+            <h2 class="font-semibold text-gray-900">
+                Add character
+            </h2>
+            <TextInput
+                id="name"
+                v-model="createForm.name"
+                type="text"
+                label="Name"
+                required
+                maxlength="120"
+                :error="createForm.errors.name"
+            />
+            <TextArea
+                id="description"
+                v-model="createForm.description"
+                label="Description"
+                rows="3"
+                required
+                :error="createForm.errors.description"
+            />
+            <TextArea
+                id="consistency_notes"
+                v-model="createForm.consistency_notes"
+                label="Consistency notes (style anchors)"
+                rows="2"
+                :error="createForm.errors.consistency_notes"
+            />
+            <CharacterVoicePicker
+                v-model:voice="createForm.voice"
+                v-model:style="createForm.style"
+                :project-id="project.id"
+                :voice-groups="voiceGroups"
+                :style-presets="stylePresets"
+                :default-voice="defaultVoice"
+            />
+            <p
+                v-if="createForm.errors['voice_config.instructions'] || createForm.errors.voice_config"
+                class="text-sm text-red-600"
+                role="alert"
             >
-                <h2 class="font-semibold text-gray-900">
-                    Add character
-                </h2>
-                <TextInput
-                    id="name"
-                    v-model="createForm.name"
-                    type="text"
-                    label="Name"
-                    required
-                    maxlength="120"
-                    :error="createForm.errors.name"
-                />
-                <TextArea
-                    id="description"
-                    v-model="createForm.description"
-                    label="Description"
-                    rows="3"
-                    required
-                    :error="createForm.errors.description"
-                />
-                <TextArea
-                    id="consistency_notes"
-                    v-model="createForm.consistency_notes"
-                    label="Consistency notes (style anchors)"
-                    rows="2"
-                    :error="createForm.errors.consistency_notes"
-                />
-                <SelectInput
-                    id="create-voice"
-                    v-model="createForm.voice"
-                    label="Dialogue voice (optional)"
-                >
-                    <option value="">
-                        Provider default ({{ defaultVoice }})
-                    </option>
-                    <optgroup
-                        v-for="group in voiceGroups"
-                        :key="group.label"
-                        :label="group.label"
-                    >
-                        <option
-                            v-for="option in group.options"
-                            :key="option.value"
-                            :value="option.value"
-                        >
-                            {{ option.label }}
-                        </option>
-                    </optgroup>
-                </SelectInput>
-                <SelectInput
-                    id="create-voice-style"
-                    v-model="createForm.style"
-                    label="Voice style (optional)"
-                >
-                    <option
-                        v-for="preset in stylePresets"
-                        :key="preset.value"
-                        :value="preset.value"
-                    >
-                        {{ preset.label }}
-                    </option>
-                    <option value="custom">
-                        Custom (edit instructions)
-                    </option>
-                </SelectInput>
-                <TextArea
-                    id="create-voice-instructions"
-                    v-model="createForm.instructions"
-                    label="Style instructions (optional)"
-                    rows="2"
-                    maxlength="4096"
-                    :error="createForm.errors['voice_config.instructions'] || createForm.errors.voice_config"
-                />
-                <BaseButton
-                    type="submit"
-                    :disabled="createForm.processing"
-                >
-                    Add character
-                </BaseButton>
-            </form>
+                {{ createForm.errors['voice_config.instructions'] || createForm.errors.voice_config }}
+            </p>
+            <BaseButton
+                type="submit"
+                :disabled="createForm.processing"
+            >
+                Add character
+            </BaseButton>
+        </form>
 
-            <div class="space-y-3">
-                <p
-                    v-if="characters.length === 0"
-                    class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-600"
-                >
-                    No characters yet.
-                </p>
-                <div
+        <div class="mt-8">
+            <h2 class="text-lg font-semibold text-gray-900">
+                Characters
+            </h2>
+            <p
+                v-if="characters.length === 0"
+                class="mt-3 rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-600"
+            >
+                No characters yet.
+            </p>
+            <div
+                v-else
+                class="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+            >
+                <article
                     v-for="character in characters"
                     :key="character.id"
-                    class="rounded-lg border border-gray-200 bg-white p-4"
+                    class="flex flex-col rounded-lg border border-gray-200 bg-white p-4"
                 >
-                    <div class="flex items-start justify-between">
+                    <div class="flex items-start justify-between gap-2">
                         <h3 class="font-medium text-gray-900">
                             {{ character.name }}
                         </h3>
-                        <div class="flex gap-3 text-sm">
+                        <div class="flex shrink-0 gap-3 text-sm">
                             <Link
                                 :href="route('characters.edit', [project.id, character.id])"
                                 class="text-indigo-600 hover:text-indigo-800"
@@ -314,47 +316,116 @@ if (props.referenceJobActive) {
                             </button>
                         </div>
                     </div>
-                    <p class="mt-1 text-sm text-gray-600">
+
+                    <div class="mt-3 h-36 w-full overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                        <img
+                            v-if="character.reference_image_url"
+                            :src="character.reference_image_url"
+                            :alt="`${character.name} reference image`"
+                            class="h-full w-full object-cover"
+                        >
+                        <div
+                            v-else
+                            class="flex h-full w-full items-center justify-center"
+                            aria-hidden="true"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke-width="1.5"
+                                stroke="currentColor"
+                                class="h-10 w-10 text-gray-300"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                                />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <p class="mt-3 line-clamp-3 text-sm text-gray-600">
                         {{ character.description }}
                     </p>
+
+                    <dl class="mt-3 space-y-1 text-sm">
+                        <div class="flex gap-2">
+                            <dt class="w-14 shrink-0 text-gray-500">
+                                Voice
+                            </dt>
+                            <dd class="font-medium text-gray-900">
+                                {{ voiceLabel(character.voice_config?.voice) }}
+                            </dd>
+                        </div>
+                        <div class="flex gap-2">
+                            <dt class="w-14 shrink-0 text-gray-500">
+                                Style
+                            </dt>
+                            <dd class="font-medium text-gray-900">
+                                {{ styleLabel(character.voice_config?.instructions) }}
+                            </dd>
+                        </div>
+                    </dl>
+
                     <CharacterVoicePicker
+                        preview-only
+                        class="mt-3"
                         :project-id="project.id"
-                        :character="character"
+                        :voice="character.voice_config?.voice ?? ''"
+                        :style="detectStylePreset(character.voice_config?.instructions)"
                         :voice-groups="voiceGroups"
                         :style-presets="stylePresets"
                         :default-voice="defaultVoice"
                     />
+
                     <p
                         v-if="character.consistency_notes"
-                        class="mt-1 text-xs text-gray-500"
+                        class="mt-3 line-clamp-2 text-xs text-gray-500"
                     >
                         {{ character.consistency_notes }}
                     </p>
-                    <div class="mt-3 flex items-center gap-3">
-                        <div class="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
-                            <img
-                                v-if="character.reference_image_url"
-                                :src="character.reference_image_url"
-                                :alt="`${character.name} reference image`"
-                                class="h-full w-full object-cover"
-                            >
-                        </div>
-                        <button
-                            type="button"
-                            class="text-sm font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
-                            :disabled="referenceJobActive"
-                            @click="generateReference(character)"
+
+                    <div class="mt-auto pt-3">
+                        <CollapsibleSection
+                            title="Reference images"
+                            :section-key="`char-ref-${character.id}`"
+                            :default-expanded="false"
                         >
-                            {{ character.has_reference_image ? 'Regenerate reference image' : 'Generate reference image' }}
-                        </button>
+                            <div class="h-48 w-full overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                                <img
+                                    v-if="character.reference_image_url"
+                                    :src="character.reference_image_url"
+                                    :alt="`${character.name} reference image`"
+                                    class="h-full w-full object-contain"
+                                >
+                                <div
+                                    v-else
+                                    class="flex h-full w-full items-center justify-center text-xs italic text-gray-400"
+                                >
+                                    No reference image yet
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button
+                                    type="button"
+                                    class="text-sm font-medium text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                    :disabled="referenceJobActive"
+                                    @click="generateReference(character)"
+                                >
+                                    {{ character.has_reference_image ? 'Regenerate reference image' : 'Generate reference image' }}
+                                </button>
+                            </div>
+                            <p
+                                v-if="!character.has_reference_image"
+                                class="mt-2 text-xs italic text-gray-400"
+                            >
+                                Generate one to keep this character consistent across scenes (best effort).
+                            </p>
+                        </CollapsibleSection>
                     </div>
-                    <p
-                        v-if="!character.has_reference_image"
-                        class="mt-2 text-xs italic text-gray-400"
-                    >
-                        No reference image yet — generate one to keep this character consistent across scenes (best effort).
-                    </p>
-                </div>
+                </article>
             </div>
         </div>
     </AppLayout>

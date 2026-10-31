@@ -18,6 +18,14 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    visualStyles: {
+        type: Array,
+        required: true,
+    },
+    languages: {
+        type: Array,
+        required: true,
+    },
 });
 
 const form = useForm({
@@ -92,24 +100,40 @@ function destroy() {
                 :error="form.errors.target_duration_seconds"
             />
 
-            <TextInput
+            <SelectInput
                 id="visual_style"
                 v-model="form.visual_style"
-                type="text"
-                label="Visual style"
-                required
-                maxlength="100"
+                label="Visual style (project default)"
                 :error="form.errors.visual_style"
-            />
+            >
+                <option
+                    v-for="style in visualStyles"
+                    :key="style.value"
+                    :value="style.value"
+                >
+                    {{ style.label }}
+                </option>
+            </SelectInput>
 
-            <TextInput
+            <SelectInput
                 id="language"
                 v-model="form.language"
-                type="text"
-                label="Language"
-                maxlength="10"
+                label="Language (project default)"
                 :error="form.errors.language"
-            />
+            >
+                <option
+                    v-for="language in languages"
+                    :key="language.value"
+                    :value="language.value"
+                >
+                    {{ language.label }}
+                </option>
+            </SelectInput>
+
+            <p class="text-sm text-gray-500">
+                These are the project defaults — every new video inherits them, and existing videos keep their own
+                overrides. Individual videos are configured on the video settings page.
+            </p>
 
             <div class="flex flex-wrap gap-3">
                 <BaseButton

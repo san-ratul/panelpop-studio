@@ -22,10 +22,39 @@ class ProjectController extends Controller
         );
     }
 
+    /**
+     * Catalog options for the visual style + language dropdowns
+     * (config/catalog.php). The current stored value is merged in so
+     * existing projects with custom values remain selectable.
+     */
+    public static function styleOptions(?string $current = null): array
+    {
+        return self::catalogOptions('visual_styles', $current);
+    }
+
+    public static function languageOptions(?string $current = null): array
+    {
+        return self::catalogOptions('languages', $current);
+    }
+
+    private static function catalogOptions(string $key, ?string $current): array
+    {
+        $catalog = collect(config('catalog.'.$key, []))
+            ->map(static fn (array $entry): array => ['value' => (string) $entry['value'], 'label' => (string) $entry['label']]);
+
+        if (is_string($current) && $current !== '' && ! $catalog->contains(static fn (array $entry): bool => $entry['value'] === $current)) {
+            $catalog->push(['value' => $current, 'label' => $current.' (current)']);
+        }
+
+        return $catalog->values()->all();
+    }
+
     public function create(): Response
     {
         return Inertia::render('Projects/Create', [
             'presentationModes' => self::presentationModes(),
+            'visualStyles' => self::styleOptions(),
+            'languages' => self::languageOptions(),
         ]);
     }
 
@@ -46,6 +75,8 @@ class ProjectController extends Controller
         return Inertia::render('Projects/Edit', [
             'project' => self::present($project),
             'presentationModes' => self::presentationModes(),
+            'visualStyles' => self::styleOptions($project->visual_style),
+            'languages' => self::languageOptions($project->language),
         ]);
     }
 

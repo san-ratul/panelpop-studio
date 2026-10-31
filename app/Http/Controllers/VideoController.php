@@ -51,6 +51,9 @@ class VideoController extends Controller
 
         return Inertia::render('Videos/Create', [
             'project' => ProjectController::present($project),
+            'presentationModes' => ProjectController::presentationModes(),
+            'visualStyles' => ProjectController::styleOptions($project->visual_style),
+            'languages' => ProjectController::languageOptions($project->language),
         ]);
     }
 
@@ -84,6 +87,9 @@ class VideoController extends Controller
         return Inertia::render('Videos/Edit', [
             'project' => ProjectController::present($project),
             'video' => self::present($video),
+            'presentationModes' => ProjectController::presentationModes(),
+            'visualStyles' => ProjectController::styleOptions($video->effectiveVisualStyle()),
+            'languages' => ProjectController::languageOptions($video->effectiveLanguage()),
         ]);
     }
 
