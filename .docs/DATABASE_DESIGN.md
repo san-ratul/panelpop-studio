@@ -25,11 +25,29 @@
 
 Indexes: `user_id`. Uniqueness: none.
 
+### videos (added 2026-10-31 — a project owns multiple independent videos)
+| Column | Type | Notes |
+|---|---|---|
+| id | pk | |
+| project_id | FK → projects.id, cascade | |
+| title | varchar(255) | Backfill seeded it from the story title, else the project title |
+| status | varchar(30), default `draft` | Per-video pipeline state (same lifecycle values as `projects.status` had) |
+| target_duration_seconds | smallint unsigned, default 60 | Per-video duration target; new videos inherit the project value at creation |
+| presentation_mode_override | varchar(30) nullable | NULL = inherit `projects.presentation_mode` |
+| visual_style_override | varchar(100) nullable | NULL = inherit `projects.visual_style` |
+| language_override | varchar(10) nullable | NULL = inherit `projects.language` |
+| settings | JSON nullable | `narration_voice_config`, `animation.enabled` — project `settings` is the fallback layer |
+| sort_order | int unsigned, default 0 | Ordering within a project |
+| archived_at | timestamp nullable | Archive flag (listing filter); restore clears it |
+| timestamps | | |
+
+Indexes: `(project_id, sort_order)`, `(project_id, status)`. Uniqueness: none. Delete cascades story/scenes/audio/render rows; asset files of deleted video assets are removed from disk.
+
 ### stories
 | Column | Type | Notes |
 |---|---|---|
 | id | pk | |
-| project_id | FK → projects.id, cascade, **unique** | 1:1 with project |
+| video_id | FK → videos.id, cascade, **unique** | 1:1 with **video** (was `project_id` 1:1 with project — dropped by migration `2026_10_30_000002`) |
 | title | varchar(255) | |
 | logline | varchar(500) nullable | |
 | full_text | longtext | |
@@ -55,13 +73,14 @@ Indexes: `project_id`. Uniqueness: `(project_id, name)` proposed — confirm des
 | Column | Type | Notes |
 |---|---|---|
 | id | pk | |
-| project_id | FK → projects.id, cascade | |
+| video_id | FK → videos.id, cascade | **Video-scoped (2026-10-31)** — was `project_id`, dropped |
 | story_id | FK → stories.id, nullable, cascade | |
-| number | smallint unsigned | Order; unique per project |
+| number | smallint unsigned | Order; unique per video |
 | duration_seconds | decimal(5,2) | Sum validated against target |
 | background_description | text | |
 | image_prompt | text | |
 | narration_text | text nullable | |
+| narration_voice_instructions | text nullable | **2026-10-31 (migration `2026_10_30_000003`):** per-scene delivery instructions merged into the narrator synthesis |
 | image_asset_id | FK → assets.id, nullOnDelete | |
 | narration_audio_asset_id | FK → assets.id, nullOnDelete | **Phase 5:** narration-block voice audio (same pattern as `image_asset_id`); populated by `GenerateVoiceJob` via `VoiceAudioPersister` (D-027) |
 | speech_bubble_settings | JSON nullable | Per-scene bubble styling/placement |
@@ -70,15 +89,17 @@ Indexes: `project_id`. Uniqueness: `(project_id, name)` proposed — confirm des
 | rendered_at | timestamp nullable | |
 | timestamps | | |
 
-Indexes: `project_id`, `(project_id, status)`. Unique: `(project_id, number)`.
+Indexes: `video_id`, `(video_id, status)`. Unique: `(video_id, number)`.
 
 ### dialogue_lines
 | Column | Type | Notes |
 |---|---|---|
 | id | pk | |
 | scene_id | FK → scenes.id, cascade | |
-| character_id | FK → characters.id, nullable, nullOnDelete | |
+| character_id | FK → characters.id, nullable, nullOnDelete | Cross-project characters rejected on write (2026-10-31) |
 | text | text | |
+| emotion | varchar(40) nullable | **2026-10-31:** AI-assigned (or manual) presentation label (happy, sad, whisper, …) — also drives the render motion recipe; TTS instructions remain authoritative |
+| voice_instructions | text nullable | **2026-10-31:** per-line delivery instruction overriding the character's default at synthesis time |
 | sort_order | smallint unsigned | |
 | audio_asset_id | FK → assets.id, nullOnDelete | |
 | status | enum: pending, generating, ready, failed | |
@@ -92,6 +113,7 @@ Indexes: `(scene_id, sort_order)`.
 |---|---|---|
 | id | pk | |
 | project_id | FK → projects.id, cascade | |
+| video_id | nullable video reference, indexed `(video_id, type)` | **2026-10-31:** set for video-scoped types (`scene_image`, `voice_audio`, `video`, `thumbnail`, `subtitle`); NULL for the project library (`character_reference`, `music`, `sfx`). No FK constraint (application-enforced) |
 | type | enum: character_reference, scene_image, voice_audio, music, sfx, video, thumbnail, subtitle | |
 | disk | varchar(50) | Default `media-private` |
 | path | varchar(1024) | Storage path (never public URL) |
@@ -145,6 +167,7 @@ Indexes: `(capability, owner_user_id)`. See [PROVIDER_INTEGRATION.md](PROVIDER_I
 |---|---|---|
 | id | pk | |
 | project_id | FK → projects.id, cascade | |
+| video_id | nullable video reference, indexed `(video_id, status)` | **2026-10-31:** set for video-scoped job types (`story_generation`, `scene_planning`, `scene_image`, `voice_generation`, `video_render`, `thumbnail`, `subtitle_export`); project-level jobs (e.g. `character_reference`) keep NULL. No FK constraint |
 | type | enum: story_generation, scene_planning, character_reference, scene_image, voice_generation, music_generation, video_render, thumbnail, subtitle_export | |
 | status | enum: queued, running, succeeded, failed, cancelled | |
 | attempts | tinyint unsigned, default 0 | |
@@ -157,7 +180,7 @@ Indexes: `(capability, owner_user_id)`. See [PROVIDER_INTEGRATION.md](PROVIDER_I
 | started_at / finished_at | timestamp nullable | |
 | timestamps | | |
 
-Indexes: `(project_id, status)`, `(status, updated_at)` (stale-job sweeps).
+Indexes: `(project_id, status)`, `(video_id, status)`, `(status, updated_at)` (stale-job sweeps).
 
 ### provider_calls
 | Column | Type | Notes |
@@ -165,6 +188,7 @@ Indexes: `(project_id, status)`, `(status, updated_at)` (stale-job sweeps).
 | id | pk | |
 | generation_job_id | FK → generation_jobs.id, nullOnDelete | |
 | project_id | FK → projects.id, nullable, cascade | |
+| video_id | FK → videos.id, nullable, nullOnDelete | **2026-10-31 (migration `2026_10_30_000002`):** owning video for video-scoped calls — exact per-video cost attribution; project-shared calls (character references) and legacy rows stay NULL |
 | user_id | FK → users.id, nullable, nullOnDelete | Denormalized owner for per-user analytics (migration `2026_10_29_000001`) |
 | capability | enum: text, image, tts, music | |
 | operation | enum: story, scene_planning, video_metadata, character_reference, scene_image, narration_tts, dialogue_tts, music_generation | Finer-grained billable category |
@@ -190,7 +214,7 @@ Indexes: `(project_id, status)`, `(status, updated_at)` (stale-job sweeps).
 | error_message | text nullable | Sanitized |
 | timestamps | | |
 
-Indexes: `(project_id, created_at)`, `(provider, status)`, `(user_id, created_at)`, `(operation)`, `(created_at)`, `(charge_status)`. Cost semantics, formulas and limitations: [COST_ACCOUNTING.md](COST_ACCOUNTING.md).
+Indexes: `(project_id, created_at)`, `(video_id)`, `(provider, status)`, `(user_id, created_at)`, `(operation)`, `(created_at)`, `(charge_status)`. Cost semantics, formulas and limitations: [COST_ACCOUNTING.md](COST_ACCOUNTING.md).
 
 ### provider_rates
 Historical price-list snapshots (migration `2026_10_29_000002`), written by `php artisan cost:snapshot-rates`.
@@ -206,6 +230,17 @@ Historical price-list snapshots (migration `2026_10_29_000002`), written by `php
 | effective_from | date | |
 | timestamps | | |
 
+### video_metadata (added 2026-10-28, re-scoped to videos 2026-10-31)
+| Column | Type | Notes |
+|---|---|---|
+| id | pk | |
+| video_id | FK → videos.id, cascade, **unique** | 1:1 with **video** (was `project_id` 1:1 with project — dropped by migration `2026_10_30_000002`) |
+| platform | varchar(30) | `youtube_shorts`, `facebook_reels`, or `both` |
+| title | varchar(100) | AI-generated, ≤100 chars |
+| description | text | AI-generated, ≤2200 chars |
+| generation_meta | JSON nullable | provider/model context (no secrets) |
+| timestamps | | |
+
 ### users addition
 `users.is_admin` (boolean, default false; migration `2026_10_29_000003`) — operator flag gating the internal cost analytics (`admin` Gate, D-030).
 
@@ -216,10 +251,11 @@ Historical price-list snapshots (migration `2026_10_29_000002`), written by `php
 ## Implementation notes (Phase 1 deviations & clarifications — see D-009)
 
 - **Enums:** "enum" columns are implemented as `VARCHAR` + PHP 8.3 backed enums in `app/Enums/` with `Rule::enum()` validation (native MySQL ENUM avoided for migration ergonomics).
+- **Video rescope (2026-10-31, migrations `2026_10_30_000001/2/3`):** additive and resume-safe — every step checks column/index/FK existence first because MySQL DDL does not run inside a transaction. The backfill creates exactly one video per existing project (seeded with the story title + the project's pipeline status) and re-parents stories/scenes/video_metadata plus video-scoped assets/jobs/provider calls by the project join. Dropped columns: `stories.project_id`, `scenes.project_id`, `video_metadata.project_id` (video FKs replace them). Verified against real data: 8 projects → 8 videos, zero orphan rows. `projects.status` is now a **derived aggregate** of its videos' statuses (`App\Services\ProjectStatusService`, recomputed on every video save/delete via model events).
 - **characters:** unique `(project_id, name)` enforced (duplicate names rejected within a project; allowed across projects).
-- **scenes:** unique `(project_id, number)` + index `(project_id, status)` enforced at DB level; reorder renumbers via a two-phase offset update inside a transaction to respect the unique index.
+- **scenes:** unique `(video_id, number)` + index `(video_id, status)` enforced at DB level (was project-scoped before 2026-10-31); reorder renumbers via a two-phase offset update inside a transaction to respect the unique index.
 - **speech_bubble_settings shape (validated on write):** nullable object, keys `style` (`classic|thought|shout`), `position` (`top|center|bottom`), `max_width_percent` (int 20–100), `background_color` (`#RRGGBB`), `font_size` (int 8–72); unknown keys rejected. Rendering semantics deferred to Phase 6.
-- **voice_config:** shape resolved in Phase 5 (D-026): `{voice?, instructions?, speed?}` validated on write; unknown keys rejected; empty voice = provider-default fallback. Project-level narration voice: `projects.settings.narration_voice_config` (same shape, edited on the audio page).
+- **voice_config:** shape resolved in Phase 5 (D-026): `{voice?, instructions?, speed?}` validated on write; unknown keys rejected; empty voice = provider-default fallback. Narration voice resolution (2026-10-31): `videos.settings.narration_voice_config` → `projects.settings.narration_voice_config` (same shape; the project-level value is edited on the audio page, the video-level override on the video settings page).
 - **scenes.narration_audio_asset_id (Phase 5):** nullable FK → `assets` (nullOnDelete) added by migration `2026_10_28_000001`; narration voice artifacts are asset rows of type `voice_audio` with `meta.duration_ms`/`duration_source`/`exceeds_scene_duration`/`provenance=ai_tts` — same ownership-chain/policy pattern as `image_asset_id` (D-027).
 - **provider_settings.credentials:** NOT NULL text with Laravel `encrypted` cast; an **empty string means "no stored credential"** (key lives in env) — D-021. The model adds `#[Hidden(['credentials'])]` so serialization never emits it. Single default per capability+owner enforced by `App\AI\ProviderSettingsService` in a transaction.
 - **projects.provider_overrides:** maps capability → `provider_settings.id`; resolved by `App\AI\ProviderManager` with policy checks (exists, capability match, active, owner) — invalid overrides fail with actionable errors, no silent fallback. Delete of a setting cleans dangling references.
@@ -229,4 +265,4 @@ Historical price-list snapshots (migration `2026_10_29_000002`), written by `php
 
 ## Lifecycle summary
 
-`projects.status` mirrors pipeline stage; `scenes.status`/`dialogue_lines.status` track per-asset generation; `generation_jobs.status` tracks queue work; `assets.status` tracks artifact validity; `audio_licences.licence_verified` gates render. No row is "complete" without its verification gate passing.
+`videos.status` carries the pipeline stage per video; `projects.status` is a derived aggregate recomputed on every video save/delete (`ProjectStatusService`). `scenes.status`/`dialogue_lines.status` track per-asset generation; `generation_jobs.status` tracks queue work; `assets.status` tracks artifact validity; `audio_licences.licence_verified` gates render. No row is "complete" without its verification gate passing.

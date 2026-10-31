@@ -32,6 +32,13 @@
 5. Restart PHP-FPM + queue workers (`supervisorctl restart all`)
 6. Smoke test: login, create project, run fake-provider pipeline or one real cheap call; check `provider_calls` ledger
 
+## Migration notes — video rescope (2026-10-31)
+
+- `php artisan migrate --force` applies three **additive, resume-safe** migrations: `2026_10_30_000001` (videos table + one-video-per-project backfill), `2026_10_30_000002` (pipeline re-scoped to videos: stories/scenes/video_metadata re-parented, video-scoped assets/jobs/provider calls attributed), `2026_10_30_000003` (dialogue voice-assignment columns). No data loss; verified against real data (each existing project received exactly one video seeded with the story title + pipeline status).
+- **Resume safety:** MySQL DDL does not run inside a transaction, so every step checks column/index/FK existence first — an interrupted migration can simply be re-run to completion.
+- New **optional** environment variable: `FFMPEG_ANIMATION_ENABLED` (default `true`) — master switch for the layered scene animation; per-video/project settings override it at runtime.
+- No queue, scheduler, or worker changes.
+
 ## Scheduled maintenance
 
 - Stale `running` job sweeper + intermediate-file cleanup (scheduler; defined in Phase 6/7)

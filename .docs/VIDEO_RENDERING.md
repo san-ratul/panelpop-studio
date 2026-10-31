@@ -6,7 +6,7 @@
 
 1. **Pre-flight validation** — project in renderable state; every scene `status=ready` with an existing image asset on disk; Σ scene durations within tolerance of target (30–90 s); audio assets present for all narration/dialogue when mode requires them; music/SFX pass the licence gate (`licence_verified=true`).
 2. **Prepare scene images** — scale/pad/crop each still to exact 1080×1920 (cover-crop, preserving composition).
-3. **Animate (Ken Burns)** — per-scene slow zoom/pan via `zoompan` at consistent 30 fps for the scene's exact duration; deterministic parameters derived from scene number (alternate direction) so renders are reproducible.
+3. **Animate** — per-scene `zoompan` motion at a consistent 30 fps for the scene's exact duration. Default: **layered animation** (emotion-driven camera recipe + breathing zoom + micro-drift — see "Layered animation mode" below). When disabled, the previous plain Ken Burns motion applies (deterministic parameters derived from scene number — alternate direction — so renders are reproducible and pixel-identical to the pre-animation behavior).
 4. **Overlays** — speech bubbles (mode `speech_bubbles`/`hybrid` bubble settings): pre-rendered PNG overlays (text wrapped server-side, positioned per `speech_bubble_settings`); burned-in captions optional per project settings.
 5. **Scene segments** — render each scene to an intermediate H.264 yuv420p segment (uniform fps/SAR/PixFmt) so concat is lossless-safe.
 6. **Transitions** — join segments with short `xfade` transitions (e.g., crossfade); transition time is included in scene duration budget, not additive.
@@ -45,6 +45,17 @@ The pipeline is implemented exactly as specified above. Concrete details for ope
 - **Status flow**: pre-flight passes → `projects.status=rendering` → success `completed` (publisher) / execution failure `failed` unless a previous completed video exists (a failed re-render never hides the old render) / pre-flight failure leaves the status untouched.
 - **Downloads**: `assets.show` (policy-checked) serves all artifacts; `?download=1` switches to `Content-Disposition: attachment` for explicit downloads. Nothing is ever exposed from `public/`.
 
+## Layered animation mode (added 2026-10-31)
+
+Per-scene motion is no longer limited to the plain scene-number Ken Burns recipe. When animation is enabled (default), `FfmpegCommandBuilder::segment` receives an `$animated` flag and `layeredMotionExpressions()` composes two layers:
+
+1. **Emotion-driven camera move** — the scene's dominant emotion (the first dialogue line's AI-assigned emotion, falling back to scene-level data) picks a bounded recipe from the documented `motionRecipe` map (e.g. happy → energetic upward drift, sad → gentle pull-back, angry → firm push-in, whisper/calm → minimal motion; neutral alternates push/pull by scene number), so camera motion is consistent with the spoken tone.
+2. **Breathing idle motion** — a subtle sinusoidal zoom modulation (clamped to the safe 1.0–1.14 band) plus a few-pixel micro-drift on the recipe's axis, so the frame never fully rests and zoom/drift never pulse in sync.
+
+Determinism: identical plans produce identical commands (same recipes, same expressions). The transform is a whole-frame camera move — the illustration is never warped, and the zoom band prevents cropping into faces.
+
+Effective switch: `RenderPlan.animationEnabled` ← `Video::effectiveAnimationEnabled()` (video override → project default → `FFMPEG_ANIMATION_ENABLED`, config default on). Disabled renders use the previous plain Ken Burns expressions (pixel-identical behavior). Provider-based per-character animation (blinking, mouth sync) is **designed, not implemented** — `ProviderCapability::Video` and the `VideoProvider` image-to-video contract exist, but no adapter is registered. Full specification: [VIDEO_ANIMATION.md](VIDEO_ANIMATION.md).
+
 ## Safe process execution (hard rule)
 
 - Symfony Process with **array arguments** only. Never `FromShellCommandline`, never string concatenation of story text, prompts, filenames, or paths into a command string.
@@ -59,7 +70,7 @@ The pipeline is implemented exactly as specified above. Concrete details for ope
 | Recoverability | Per-scene retries and render retries must not regenerate intact upstream assets (images/audio stay; only failed stage reruns) |
 | Progress | Render job reports granular progress (per scene, per stage) to `generation_jobs.progress` |
 | Cleanup | Intermediate segments/temp files removed on success AND failure; intermediates live on a temp area, never the asset disk |
-| Duplicate renders | A project renders one video at a time (lock); stale `rendering` status recoverable by a sweep |
+| Duplicate renders | A video renders one at a time (lock); two videos of the same project never queue-block each other (per-video lock keys); stale `rendering` status recoverable by a sweep |
 | Failure evidence | ffprobe/ffmpeg stderr tail (redacted) stored in the job record for diagnosis, not shown raw to UI |
 | Disk safety | Pre-flight checks free space before starting; artifacts checksummed in `assets.meta` |
 

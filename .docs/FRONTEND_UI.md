@@ -38,3 +38,20 @@ Do not style native controls with bare element selectors (this would restyle `<a
 - Buttons: primary for the main action of a section, `outline` for secondary AI actions, `secondary` for navigation/cancel-as-link, `ghost` for in-form cancel, `danger` for destructive standalone buttons; inline row actions stay text links (`text-sm font-medium` + colour).
 - Errors render via `FieldError` (icon + `role="alert"`) directly below their control; page-level error banners keep the existing `rounded-md border-red-200 bg-red-50` alert style.
 - Dark mode is not supported (no theme tokens defined).
+
+## Videos pages, layout context & CollapsibleSection (2026-10-31)
+
+- **Videos pages** (`resources/js/Pages/Videos/`): `Index` (per-project video list, archive state + restore), `Create`, and `Edit` — the video settings page. The Edit page shows the inherited project defaults explicitly and offers per-video overrides: visual style, language, presentation mode (each an explicit "inherit / override" choice — saving NULL restores the project default), narrator voice, animation on/off, target duration, plus a "Reset all to project defaults" action (stores NULL overrides).
+- **Style/language dropdowns** read the catalogs from `config/catalog.php` (shared page props); the currently stored value is always merged into the options so existing custom values stay selectable. Presentation-mode options mirror the project enum.
+- **AppLayout video context:** video-scoped pages (Story, Storyboard, Audio, Render) pass a `video` prop (id + title). When present, the contextual project sections in the sidebar target that video's routes, and a "Videos" entry appears in the Workspace section.
+- **`CollapsibleSection.vue`** (`resources/js/Components/`): reusable hide/show wrapper — props `title` (required), `sectionKey` (required, stable localStorage key), `defaultExpanded` (default true). Content stays **mounted** while collapsed (`v-show`, so toggling never re-downloads images); state persists per section key under `panelpop.collapsed.*`; the toggle button carries `aria-expanded`/`aria-controls`. Used for character reference-image galleries and the render-page cost panel.
+
+## Character cards & voice preview (2026-10-31)
+
+- **Character cards** (`Characters/Index.vue`): responsive card grid (avatar or neutral placeholder, name, clamped description, resolved Voice and Style labels, inline preview, Edit/Delete). The per-card reference-image gallery is a `CollapsibleSection` (collapsed by default).
+- **`CharacterVoicePicker.vue`** exposes only a **voice select + voice-style preset select + preview button** — there is no instructions textarea and no speed control (saving derives instructions from the selected style preset on the page side). Preview button states: `Preview voice` → `Generating preview…` (disabled, `aria-busy`) → `Stop preview` while playing; failures render inline via `FieldError`; changing voice/style aborts the in-flight request and releases playback (blob URL revoked on end/change/unmount). A `preview-only` mode renders just the preview control — used on cards to preview the character's **saved** voice/style.
+- **Storyboard voice assignment UI:** an assign-voices action (`storyboard.assign-voices`) with job-status polling; after assignment, dialogue lines display their AI-assigned `emotion` as a badge and `voice_instructions` as caption text (storyboard/audio).
+
+## Render-page cost panel (2026-10-31)
+
+The render page has a "Generation cost" `CollapsibleSection` (collapsed by default, key `render-generation-cost`) showing the `VideoCostReport` buckets — `total_generation_cost` split into `actual` / `estimated` / `unconfirmed` / `legacy_unclassified` / retry exposure / infrastructure — plus the bucket-semantics legend and explanatory notes. Definitions: [COST_ACCOUNTING.md](COST_ACCOUNTING.md); validation story: [COST_RECONCILIATION.md](COST_RECONCILIATION.md).

@@ -61,6 +61,10 @@ Rules encoded above:
 - Every job records status/progress/attempts in `generation_jobs` and provider usage in `provider_calls` ([DATABASE_DESIGN.md](DATABASE_DESIGN.md)).
 - Failed scenes retry individually; intact assets are never regenerated on retry (idempotency, [COST_MANAGEMENT.md](COST_MANAGEMENT.md)).
 
+## Video domain (multiple videos per project)
+
+A project owns multiple independent **videos** (`App\Models\Video`), each a complete pipeline unit with its own story, scenes, dialogue lines, voice audio, scene images, render outputs, generation history and provider-call cost records (`provider_calls.video_id`). Characters and music/SFX assets remain a project-level reusable library. All pipeline routes and queued jobs are video-scoped (`projects/{project}/videos/{video}/...`), with per-video `WithoutOverlapping` queue keys so sibling videos never block each other. `projects.status` is a **derived aggregate** of the video statuses, recomputed by `App\Services\ProjectStatusService` on every video save/delete. Video-level overrides (visual style, language, presentation mode, narrator voice, animation, target duration) resolve against the project defaults via the `Video::effective*` helpers consumed by every pipeline. Full model, routes, effective-settings table, migration and duplication semantics: [VIDEO_ARCHITECTURE.md](VIDEO_ARCHITECTURE.md).
+
 ## Queue strategy
 
 - **Local development (Windows):** `QUEUE_CONNECTION=database` with `jobs/job_batches/failed_jobs` tables. Runs via one or more `php artisan queue:work` processes. Horizon is NOT usable on Windows (no `pcntl`) — it is an optional production extra, not a dependency.

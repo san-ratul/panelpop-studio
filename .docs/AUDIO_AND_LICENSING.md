@@ -44,6 +44,16 @@ For every music/SFX asset the system records:
 - Licence verification ("evidence over assertion"): `licence_verified=true` can only be recorded together with (a) non-empty `evidence` entries and (b) `allowed_uses` covering the intended MVP use (`commercial_use`, `monetized_social_media`, `modification` — enforced by `AudioLicenceRequest`). Unverified/missing-use licences are flagged in the UI and **block render pre-flight** (`AudioLicenceGate`, enforced by the Phase 6 renderer).
 - Evidence format contract: `evidence` is a JSON **array** of free-text entries (quotes and/or links supporting the licence claim), stored in `audio_licences.evidence`. The audio page's Evidence textarea is one entry per line; the UI serializes it into the array at submit time (`Audio/Show.vue` `saveLicence`). **Fixed 2026-10-29:** the UI originally passed the serialized array via the Inertia visit `data` option, which `useForm` ignores — the raw textarea string was sent instead, `AudioLicenceRequest` rejected it as evidence-less, and verified saves always failed with "Verification requires recorded evidence…". The serialization now runs through `form.transform()`; the backend contract (array, entries ≤2000 chars; whitespace-only entries never satisfy verification) is unchanged and regression-tested.
 
+## Voice assignment & preview (2026-10-31)
+
+Voice selection happens at synthesis time in `GenerateVoiceJob`:
+
+- **Dialogue lines:** the assigned character's `voice_config` supplies the voice + base delivery instructions; the line's own `voice_instructions` (AI-assigned via `storyboard.assign-voices` or corrected manually) override the character's default delivery for that line.
+- **Narration blocks:** the video's effective narrator voice config (`videos.settings.narration_voice_config` → project default) plus the scene's `narration_voice_instructions` (AI-assigned, editable).
+- **Character-less dialogue lines** (no `character_id`) fall back to the narrator voice.
+
+**Voice preview** (`characters.preview-voice`, `App\Services\VoicePreviewService`): the character UI's Preview button synthesizes a short sample of the selected voice/style. The preview is **not a production asset** — nothing is attached to a character, scene, or line — and identical voice+style requests reuse content-addressed artifacts via `TtsProvider::cachedArtifactPath` instead of re-hitting the provider. Every preview records a `voice_preview` operation row in the `provider_calls` ledger.
+
 ## Normalization & mixing
 
 Handled by the renderer ([VIDEO_RENDERING.md](VIDEO_RENDERING.md)): offsets via `adelay`, `amix`, music ducking, `loudnorm` — audio assets themselves are never modified destructively; the mix is computed at render time.
