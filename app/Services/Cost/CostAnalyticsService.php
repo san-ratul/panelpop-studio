@@ -432,7 +432,7 @@ final class CostAnalyticsService
             ->whereBetween('finished_at', [$from, $to])
             ->orderBy('finished_at')
             ->orderBy('id')
-            ->get(['id', 'project_id', 'result', 'started_at', 'finished_at']);
+            ->get(['id', 'project_id', 'video_id', 'result', 'started_at', 'finished_at']);
 
         $projectIds = $renders->pluck('project_id')->unique()->all();
 
@@ -440,15 +440,34 @@ final class CostAnalyticsService
             return ['videos' => [], 'stats' => null];
         }
 
-        $costsByProject = ProviderCall::query()
+        $costsByVideo = ProviderCall::query()
             ->whereIn('project_id', $projectIds)
-            ->select('project_id', 'operation')
+            ->whereNotNull('video_id')
+            ->select('video_id', 'operation')
             ->selectRaw('COUNT(*) AS calls')
             ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NOT NULL THEN cost_actual ELSE 0 END), 0) AS actual')
-            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS estimate')
-            ->groupBy('project_id', 'operation')
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND cost_type = ? AND charge_status = ? THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS estimate', [CostType::Estimate->value, ChargeStatus::Confirmed->value])
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND cost_type = ? AND charge_status = ? THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS unconfirmed', [CostType::Estimate->value, ChargeStatus::Unconfirmed->value])
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND (cost_type IS NULL OR cost_type = ?) THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS legacy', [CostType::Unavailable->value])
+            ->selectRaw('SUM(CASE WHEN charge_status = ? THEN 1 ELSE 0 END) AS rejected_calls', [ChargeStatus::Rejected->value])
+            ->groupBy('video_id', 'operation')
             ->get()
-            ->groupBy('project_id');
+            ->groupBy('video_id');
+
+        // Project-level rows (video_id NULL: character references, legacy
+        // pre-accounting rows) are shared project infrastructure.
+        $sharedByProject = ProviderCall::query()
+            ->whereIn('project_id', $projectIds)
+            ->whereNull('video_id')
+            ->select('project_id')
+            ->selectRaw('COUNT(*) AS calls')
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NOT NULL THEN cost_actual ELSE 0 END), 0) AS actual')
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND cost_type = ? AND charge_status = ? THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS estimate', [CostType::Estimate->value, ChargeStatus::Confirmed->value])
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND cost_type = ? AND charge_status = ? THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS unconfirmed', [CostType::Estimate->value, ChargeStatus::Unconfirmed->value])
+            ->selectRaw('COALESCE(SUM(CASE WHEN cost_actual IS NULL AND (cost_type IS NULL OR cost_type = ?) THEN COALESCE(cost_estimate, 0) ELSE 0 END), 0) AS legacy', [CostType::Unavailable->value])
+            ->groupBy('project_id')
+            ->get()
+            ->keyBy('project_id');
 
         $projectMeta = Project::query()
             ->whereIn('id', $projectIds)
@@ -478,7 +497,8 @@ final class CostAnalyticsService
 
         $videos = [];
         $costPerSecond = [];
-        $attributedProvider = [];
+        $videoAttributed = [];
+        $sharedAttributed = [];
 
         foreach ($renders as $render) {
             $result = is_array($render->result) ? $render->result : [];
@@ -491,50 +511,41 @@ final class CostAnalyticsService
             $meta = $metaByProject->get($projectId);
             $owner = $meta?->user_id !== null ? $owners->get($meta->user_id) : null;
 
-            // Attribution: the first render of the project in the window
-            // carries the (project-wide, lifetime) provider ledger cost;
-            // re-renders reference it instead of repeating the same dollars.
-            $isAttributionTarget = ! isset($attributedProvider[$projectId]);
-
-            if ($isAttributionTarget) {
-                $attributedProvider[$projectId] = $render->id;
-            }
-
             $components = [];
             $actual = 0.0;
             $estimate = 0.0;
+            $unconfirmed = 0.0;
+            $legacy = 0.0;
             $calls = 0;
 
-            if ($isAttributionTarget) {
-                foreach ($costsByProject->get($projectId, collect()) as $costRow) {
-                    $key = $costRow->operation?->value ?? null;
+            // The video's provider ledger is attributed ONCE — to the video's
+            // earliest completed render in the window; a re-render of the same
+            // video reuses those assets and must not repeat the dollars.
+            $isVideoAttributionTarget = $render->video_id !== null && ! isset($videoAttributed[$render->video_id]);
 
-                    $componentKey = match ($key) {
-                        ProviderOperation::NarrationTts->value, ProviderOperation::DialogueTts->value => 'tts',
-                        ProviderOperation::Story->value,
-                        ProviderOperation::ScenePlanning->value,
-                        ProviderOperation::VideoMetadata->value,
-                        ProviderOperation::CharacterReference->value,
-                        ProviderOperation::SceneImage->value => $key,
-                        default => 'unclassified',
-                    };
+            if ($isVideoAttributionTarget) {
+                $videoAttributed[$render->video_id] = $render->id;
 
-                    $rowActual = (float) $costRow->actual;
-                    $rowEstimate = (float) $costRow->estimate;
-
-                    $component = $components[$componentKey] ?? ['actual' => 0.0, 'estimate' => 0.0, 'calls' => 0];
-                    $component['actual'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['actual'], (string) $rowActual]));
-                    $component['estimate'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['estimate'], (string) $rowEstimate]));
-                    $component['calls'] += (int) $costRow->calls;
-                    $components[$componentKey] = $component;
-
-                    $actual = (float) CostMath::toDecimal6(CostMath::sum([(string) $actual, (string) $rowActual]));
-                    $estimate = (float) CostMath::toDecimal6(CostMath::sum([(string) $estimate, (string) $rowEstimate]));
-                    $calls += (int) $costRow->calls;
+                foreach ($costsByVideo->get($render->video_id, collect()) as $costRow) {
+                    self::accumulate($components, $costRow, $actual, $estimate, $unconfirmed, $legacy, $calls);
                 }
             }
 
-            $storage = $isAttributionTarget ? $storageByProject->get($projectId) : null;
+            // Project-shared rows (character references, legacy pre-videos
+            // rows) land once, on the project's earliest render in the window.
+            $isSharedAttributionTarget = $render->video_id !== null && ! isset($sharedAttributed[$projectId]);
+
+            if ($isSharedAttributionTarget) {
+                $sharedAttributed[$projectId] = $render->id;
+
+                $shared = $sharedByProject->get($projectId);
+
+                if ($shared !== null) {
+                    self::accumulateShared($components, $shared, $actual, $estimate, $unconfirmed, $legacy, $calls);
+                }
+            }
+
+            $storage = $isSharedAttributionTarget ? $storageByProject->get($projectId) : null;
             $storageBytes = $storage !== null ? (int) $storage->bytes : 0;
             $downloadCount = $storage !== null ? (int) $storage->downloads : 0;
             $downloadBytes = $storage !== null ? (int) $storage->downloaded_bytes : 0;
@@ -556,6 +567,7 @@ final class CostAnalyticsService
 
             $videos[] = [
                 'project_id' => $projectId,
+                'video_id' => $render->video_id,
                 'project_title' => $meta?->title,
                 'user_id' => $meta?->user_id,
                 'user_name' => $owner?->name,
@@ -567,7 +579,12 @@ final class CostAnalyticsService
                 'components' => $components,
                 'provider_calls' => $calls,
                 'provider_actual' => $actual,
+                // Confirmed estimate rows only (refined TTS durations
+                // included); unconfirmed/legacy rows are reported separately
+                // and never enter the total.
                 'provider_estimate' => $estimate,
+                'provider_unconfirmed' => $unconfirmed,
+                'provider_legacy_unclassified' => $legacy,
                 'render_infrastructure' => $renderInfra,
                 'storage_bytes' => $storageBytes,
                 'storage_cost_per_day' => $storagePerDay,
@@ -580,12 +597,101 @@ final class CostAnalyticsService
                 'total_per_minute' => $durationMs !== null && $durationMs > 0
                     ? (float) bcmul(bcdiv($total, (string) ($durationMs / 1000), 12), '60', 6)
                     : null,
-                'provider_cost_attributed' => $isAttributionTarget,
-                'provider_cost_attributed_to_render_id' => $attributedProvider[$projectId],
+                'provider_cost_attributed' => $isVideoAttributionTarget,
+                'provider_cost_attributed_to_render_id' => $render->video_id !== null
+                    ? ($videoAttributed[$render->video_id] ?? null)
+                    : null,
+                'project_shared_attributed_to_render_id' => $sharedAttributed[$projectId] ?? null,
             ];
         }
 
         return ['videos' => $videos, 'stats' => $this->videoStats($videos, $costPerSecond)];
+    }
+
+    /**
+     * Accumulates one video-scoped grouped ledger row into its operation
+     * component and the video totals. Operations added after the original
+     * accounting rollout (voice previews, AI voice assignment) get their own
+     * components; unknown values land in `unclassified`.
+     *
+     * @param  array<string, array<string, float|int>>  $components
+     */
+    private static function accumulate(
+        array &$components,
+        object $costRow,
+        float &$actual,
+        float &$estimate,
+        float &$unconfirmed,
+        float &$legacy,
+        int &$calls,
+    ): void {
+        $key = $costRow->operation?->value;
+
+        $componentKey = match ($key) {
+            ProviderOperation::NarrationTts->value, ProviderOperation::DialogueTts->value => 'tts',
+            ProviderOperation::Story->value,
+            ProviderOperation::ScenePlanning->value,
+            ProviderOperation::VideoMetadata->value,
+            ProviderOperation::VoicePreview->value,
+            ProviderOperation::DialogueVoiceAssignment->value,
+            ProviderOperation::CharacterReference->value,
+            ProviderOperation::SceneImage->value => $key,
+            default => 'unclassified',
+        };
+
+        $rowActual = (float) $costRow->actual;
+        $rowEstimate = (float) $costRow->estimate;
+        $rowUnconfirmed = (float) ($costRow->unconfirmed ?? 0);
+        $rowLegacy = (float) ($costRow->legacy ?? 0);
+
+        $component = $components[$componentKey] ?? ['actual' => 0.0, 'estimate' => 0.0, 'unconfirmed' => 0.0, 'legacy' => 0.0, 'calls' => 0];
+        $component['actual'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['actual'], (string) $rowActual]));
+        $component['estimate'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['estimate'], (string) $rowEstimate]));
+        $component['unconfirmed'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['unconfirmed'], (string) $rowUnconfirmed]));
+        $component['legacy'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['legacy'], (string) $rowLegacy]));
+        $component['calls'] += (int) $costRow->calls;
+        $components[$componentKey] = $component;
+
+        $actual = (float) CostMath::toDecimal6(CostMath::sum([(string) $actual, (string) $rowActual]));
+        $estimate = (float) CostMath::toDecimal6(CostMath::sum([(string) $estimate, (string) $rowEstimate]));
+        $unconfirmed = (float) CostMath::toDecimal6(CostMath::sum([(string) $unconfirmed, (string) $rowUnconfirmed]));
+        $legacy = (float) CostMath::toDecimal6(CostMath::sum([(string) $legacy, (string) $rowLegacy]));
+        $calls += (int) $costRow->calls;
+    }
+
+    /**
+     * Accumulates the project-shared grouped row (video_id NULL rows) as a
+     * single `project_shared` component.
+     *
+     * @param  array<string, array<string, float|int>>  $components
+     */
+    private static function accumulateShared(
+        array &$components,
+        object $shared,
+        float &$actual,
+        float &$estimate,
+        float &$unconfirmed,
+        float &$legacy,
+        int &$calls,
+    ): void {
+        $sharedActual = (float) $shared->actual;
+        $sharedEstimate = (float) $shared->estimate;
+        $sharedUnconfirmed = (float) ($shared->unconfirmed ?? 0);
+        $sharedLegacy = (float) ($shared->legacy ?? 0);
+
+        $component = $components['project_shared'] ?? ['actual' => 0.0, 'estimate' => 0.0, 'unconfirmed' => 0.0, 'legacy' => 0.0, 'calls' => 0];
+        $component['actual'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['actual'], (string) $sharedActual]));
+        $component['estimate'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['estimate'], (string) $sharedEstimate]));
+        $component['unconfirmed'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['unconfirmed'], (string) $sharedUnconfirmed]));
+        $component['legacy'] = (float) CostMath::toDecimal6(CostMath::sum([(string) $component['legacy'], (string) $sharedLegacy]));
+        $component['calls'] += (int) $shared->calls;
+        $components['project_shared'] = $component;
+
+        $actual = (float) CostMath::toDecimal6(CostMath::sum([(string) $actual, (string) $sharedActual]));
+        $estimate = (float) CostMath::toDecimal6(CostMath::sum([(string) $estimate, (string) $sharedEstimate]));
+        $unconfirmed = (float) CostMath::toDecimal6(CostMath::sum([(string) $unconfirmed, (string) $sharedUnconfirmed]));
+        $legacy = (float) CostMath::toDecimal6(CostMath::sum([(string) $legacy, (string) $sharedLegacy]));
+        $calls += (int) $shared->calls;
     }
 
     /**

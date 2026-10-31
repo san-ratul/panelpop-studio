@@ -7,6 +7,7 @@ use App\AI\Contracts\ImageProvider;
 use App\AI\Contracts\MusicProvider;
 use App\AI\Contracts\TextProvider;
 use App\AI\Contracts\TtsProvider;
+use App\AI\Contracts\VideoProvider;
 use App\AI\Cost\CostEstimator;
 use App\AI\Exceptions\ProviderConfigurationException;
 use App\Enums\ProviderCapability;
@@ -136,6 +137,7 @@ final class ProviderManager
             ProviderCapability::Image => ImageProvider::class,
             ProviderCapability::Tts => TtsProvider::class,
             ProviderCapability::Music => MusicProvider::class,
+            ProviderCapability::Video => VideoProvider::class,
         };
 
         if (! $adapter instanceof $contract) {

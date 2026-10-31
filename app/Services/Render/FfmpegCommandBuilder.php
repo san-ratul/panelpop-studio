@@ -25,6 +25,8 @@ final class FfmpegCommandBuilder
 
     /**
      * @param  list<string>  $bubblePngPaths  absolute PNG overlays (already composited per scene)
+     * @param  bool  $animated  layered animation (breathing zoom + emotion-driven
+     *                          camera); false keeps the plain Ken Burns motion
      * @return list<string>
      */
     public function segmentCommand(
@@ -33,13 +35,16 @@ final class FfmpegCommandBuilder
         string $imageAbsPath,
         array $bubblePngPaths,
         string $outputPath,
+        bool $animated = false,
     ): array {
         if ($segmentLength <= 0) {
             throw new InvalidArgumentException('Segment length must be positive.');
         }
 
         $frames = self::framesFor($segmentLength);
-        [$zoom, $x, $y] = $this->kenBurnsExpressions($scene->number, $frames);
+        [$zoom, $x, $y] = $animated
+            ? $this->layeredMotionExpressions($scene, $frames)
+            : $this->kenBurnsExpressions($scene->number, $frames);
 
         $base = sprintf(
             '[0:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,'
@@ -155,6 +160,114 @@ final class FfmpegCommandBuilder
             3 => [$zoomOut, $centeredX, $panTtb],
             default => [$zoomIn, $centeredX, $centeredY],
         };
+    }
+
+    // ------------------------------------------------------------------
+    // Layered character/scene animation (VIDEO_ANIMATION.md)
+    // ------------------------------------------------------------------
+
+    /**
+     * Per-scene camera-motion recipe for the layered animation mode. The
+     * base camera move comes from the scene's dominant emotion (happy lines
+     * drift upward energetically, sad lines pull back gently, angry lines
+     * push in firmly, …), scene number picks the pan axis for neutral
+     * scenes. All parameters are deterministic and bounded — no randomness,
+     * no shaking, no motion that would distort faces.
+     *
+     * @return array{base_zoom: float, zoom_rate: float, breathing_amplitude: float, breathing_period_frames: int, drift_amplitude_px: int, drift_period_frames: int, axis: string, direction: int}
+     */
+    public static function motionRecipe(?string $emotion, int $sceneNumber, int $frames): array
+    {
+        $frames = max(1, $frames);
+
+        // Emotional camera language (documented in VIDEO_ANIMATION.md).
+        $recipe = match ($emotion) {
+            'happy', 'excited', 'cheerful', 'joyful' => [
+                'base_zoom' => 1.06, 'zoom_rate' => 0.05, 'breathing_amplitude' => 0.008,
+                'breathing_period_frames' => (int) round(3.5 * RenderSettings::FPS),
+                'drift_amplitude_px' => 12, 'axis' => 'y', 'direction' => -1, // upward = energetic
+            ],
+            'sad', 'emotional', 'gentle' => [
+                'base_zoom' => 1.06, 'zoom_rate' => -0.04, 'breathing_amplitude' => 0.004,
+                'breathing_period_frames' => (int) round(5.0 * RenderSettings::FPS),
+                'drift_amplitude_px' => 8, 'axis' => 'y', 'direction' => 1, // settling down = calm/solemn
+            ],
+            'angry', 'firm', 'intense' => [
+                'base_zoom' => 1.08, 'zoom_rate' => 0.07, 'breathing_amplitude' => 0.005,
+                'breathing_period_frames' => (int) round(2.8 * RenderSettings::FPS),
+                'drift_amplitude_px' => 10, 'axis' => 'x', 'direction' => 0, // centered push-in, no shake
+            ],
+            'scared', 'nervous', 'surprised' => [
+                'base_zoom' => 1.05, 'zoom_rate' => 0.06, 'breathing_amplitude' => 0.009,
+                'breathing_period_frames' => (int) round(2.2 * RenderSettings::FPS),
+                'drift_amplitude_px' => 10, 'axis' => 'x', 'direction' => 0,
+            ],
+            'whisper', 'calm', 'soft' => [
+                'base_zoom' => 1.03, 'zoom_rate' => 0.02, 'breathing_amplitude' => 0.003,
+                'breathing_period_frames' => (int) round(5.5 * RenderSettings::FPS),
+                'drift_amplitude_px' => 6, 'axis' => 'x', 'direction' => 0,
+            ],
+            default => [
+                'base_zoom' => 1.05, 'zoom_rate' => ($sceneNumber % 2 === 0 ? 0.05 : -0.05),
+                'breathing_amplitude' => 0.005,
+                'breathing_period_frames' => (int) round(4.0 * RenderSettings::FPS),
+                'drift_amplitude_px' => 10,
+                'axis' => (($sceneNumber - 1) % 3 === 1 ? 'x' : 'y'),
+                'direction' => (($sceneNumber - 1) % 2 === 0 ? 1 : -1),
+            ],
+        };
+
+        $recipe['breathing_period_frames'] = max(2, $recipe['breathing_period_frames']);
+        $recipe['drift_period_frames'] = max(2, (int) round($recipe['breathing_period_frames'] * 1.618)); // golden-ratio offset so zoom + drift never pulse in sync
+
+        return $recipe;
+    }
+
+    /**
+     * Layered motion zoompan expressions: an emotion-driven base camera move
+     * (slow zoom in/out) with a subtle sinusoidal "breathing" modulation on
+     * zoom and a micro-drift on the chosen axis, so static illustrations
+     * feel alive without ever distorting faces. Deterministic per scene.
+     *
+     * @return array{0: string, 1: string, 2: string} zoom/x/y expressions
+     */
+    private function layeredMotionExpressions(RenderPlanScene $scene, int $frames): array
+    {
+        $recipe = self::motionRecipe($scene->motionEmotion(), $scene->number, $frames);
+
+        $progress = 'on/'.$frames;
+        $breathPeriod = $recipe['breathing_period_frames'];
+        $driftPeriod = $recipe['drift_period_frames'];
+
+        // Slow camera move + breathing zoom, clamped to the safe 1.0–1.14
+        // band (never crops into faces, never zooms below 1:1).
+        $zoom = sprintf(
+            'max(1.0,min(%s+%s*%s+%s*sin(2*PI*on/%d),1.14))',
+            $this->formatNumber($recipe['base_zoom']),
+            $this->formatNumber($recipe['zoom_rate']),
+            $progress,
+            $this->formatNumber($recipe['breathing_amplitude']),
+            $breathPeriod,
+        );
+
+        $centeredX = '(iw-iw/zoom)/2';
+        $centeredY = '(ih-ih/zoom)/2';
+        $drift = sprintf('%d*sin(2*PI*on/%d)', $recipe['drift_amplitude_px'], $driftPeriod);
+
+        if ($recipe['axis'] === 'x') {
+            $x = sprintf('%s+%s', $centeredX, $drift);
+            $y = $centeredY;
+        } else {
+            $x = $centeredX;
+            $y = sprintf('%s+%s', $centeredY, $drift);
+        }
+
+        return [$zoom, $x, $y];
+    }
+
+    private function formatNumber(float $value): string
+    {
+        return rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
     }
 
     // ------------------------------------------------------------------

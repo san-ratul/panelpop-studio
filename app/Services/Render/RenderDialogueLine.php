@@ -5,6 +5,7 @@ namespace App\Services\Render;
 /**
  * One dialogue line participating in the render mix (Phase 5 model:
  * dialogue_lines.audio_asset_id, played sequentially inside its scene).
+ * The AI-assigned emotion drives the scene's camera motion.
  */
 final class RenderDialogueLine
 {
@@ -12,5 +13,6 @@ final class RenderDialogueLine
         public readonly int $lineId,
         public readonly string $text,
         public readonly ?RenderAudio $audio,
+        public readonly ?string $emotion = null,
     ) {}
 }

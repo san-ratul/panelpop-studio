@@ -28,6 +28,9 @@ class VideoRequest extends FormRequest
             'visual_style_override' => ['sometimes', 'nullable', 'string', 'max:100'],
             'language_override' => ['sometimes', 'nullable', 'string', 'max:10'],
             'settings' => ['sometimes', 'nullable', 'array'],
+            'settings.animation' => ['sometimes', 'array'],
+            'settings.animation.enabled' => ['sometimes', 'boolean'],
+            'settings.narration_voice_config' => ['sometimes', 'nullable', 'array'],
         ];
     }
 

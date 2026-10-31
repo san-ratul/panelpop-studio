@@ -24,6 +24,7 @@ final class RenderPlan
         public readonly array $musicAssets,
         public readonly array $sfxAssets,
         public readonly array $warnings,
+        public readonly bool $animationEnabled = false,
     ) {}
 
     /**

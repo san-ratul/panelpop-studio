@@ -45,15 +45,30 @@ const form = useForm({
     presentation_mode_override: props.video.presentation_mode_override ?? '',
     visual_style_override: props.video.visual_style_override ?? '',
     language_override: props.video.language_override ?? '',
+    animation: props.video.settings?.animation?.enabled === undefined
+        ? ''
+        : (props.video.settings.animation.enabled ? '1' : '0'),
 });
 
 function submit() {
+    const baseSettings = { ...(props.video.settings ?? {}) };
+
+    // Animation: '' inherits (remove the key), '1'/'0' is an explicit
+    // per-video override. Narrator voice config is preserved untouched.
+    if (form.animation === '') {
+        delete baseSettings.animation;
+    } else {
+        baseSettings.animation = { enabled: form.animation === '1' };
+    }
+
     form
         .transform((data) => ({
-            ...data,
+            title: data.title,
+            target_duration_seconds: data.target_duration_seconds,
             presentation_mode_override: data.presentation_mode_override || null,
             visual_style_override: data.visual_style_override || null,
             language_override: data.language_override || null,
+            settings: baseSettings,
         }))
         .patch(route('videos.update', [props.project.id, props.video.id]), {
             preserveScroll: true,
@@ -171,6 +186,23 @@ function resetOverrides() {
                     >
                         {{ mode.label }}
                         {{ mode.value === video.presentation_mode_override ? '— current override' : '' }}
+                    </option>
+                </SelectInput>
+
+                <SelectInput
+                    id="animation"
+                    v-model="form.animation"
+                    label="Scene animation"
+                    :error="form.errors.settings"
+                >
+                    <option value="">
+                        Project default ({{ props.video.settings?.animation?.enabled === undefined ? 'enabled' : (props.video.settings?.animation?.enabled ? 'enabled' : 'disabled') }})
+                    </option>
+                    <option value="1">
+                        Enabled — breathing zoom + emotion-driven camera motion
+                    </option>
+                    <option value="0">
+                        Disabled — plain Ken Burns motion
                     </option>
                 </SelectInput>
 

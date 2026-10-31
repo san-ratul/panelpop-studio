@@ -22,6 +22,7 @@ final class RenderPlanScene
         public readonly string $narrationText,
         public readonly ?RenderAudio $narrationAudio,
         public readonly array $dialogueLines,
+        public readonly ?string $dominantEmotion = null,
     ) {}
 
     /**
@@ -43,5 +44,23 @@ final class RenderPlanScene
     public function hasBubbles(): bool
     {
         return $this->bubbleText() !== '';
+    }
+
+    /**
+     * The emotional tone driving this scene's camera motion: the first
+     * non-empty dialogue emotion (lines play in order, so the opening tone
+     * leads the viewer), else the scene-level default (null = neutral).
+     */
+    public function motionEmotion(): ?string
+    {
+        foreach ($this->dialogueLines as $line) {
+            if ($line->emotion !== null && trim($line->emotion) !== '') {
+                return mb_strtolower(trim($line->emotion));
+            }
+        }
+
+        return $this->dominantEmotion !== null && trim($this->dominantEmotion) !== ''
+            ? mb_strtolower(trim($this->dominantEmotion))
+            : null;
     }
 }

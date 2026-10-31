@@ -6,6 +6,7 @@ use App\Enums\ProviderCapability;
 use App\Rules\ProviderConfig;
 use App\Rules\ProviderIsKnown;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 
 class ProviderSettingsRequest extends FormRequest
@@ -18,7 +19,10 @@ class ProviderSettingsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'capability' => ['required', new Enum(ProviderCapability::class)],
+            'capability' => ['required', new Enum(ProviderCapability::class), Rule::in(array_map(
+                static fn (ProviderCapability $capability): string => $capability->value,
+                ProviderCapability::configurable(),
+            ))],
             'provider' => ['required', 'string', 'max:60', new ProviderIsKnown($this->input('capability'))],
             'label' => ['required', 'string', 'max:120'],
             'is_default' => ['required', 'boolean'],

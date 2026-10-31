@@ -122,4 +122,18 @@ class Video extends Model
             ?? $this->project->settings['narration_voice_config']
             ?? null;
     }
+
+    /**
+     * Whether the layered render animation (breathing zoom + emotion-driven
+     * camera motion) applies to this video: video setting, else project
+     * setting, else the config default. Disabling falls back to the plain
+     * Ken Burns motion.
+     */
+    public function effectiveAnimationEnabled(): bool
+    {
+        $videoSetting = $this->settings['animation']['enabled'] ?? null;
+        $projectSetting = $this->project->settings['animation']['enabled'] ?? null;
+
+        return $videoSetting ?? $projectSetting ?? (bool) config('ffmpeg.animation.enabled', true);
+    }
 }

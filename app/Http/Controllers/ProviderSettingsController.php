@@ -30,7 +30,7 @@ final class ProviderSettingsController extends Controller
                 ->all(),
             'capabilities' => array_map(
                 static fn (ProviderCapability $capability): array => ['value' => $capability->value, 'label' => $capability->label()],
-                ProviderCapability::cases(),
+                ProviderCapability::configurable(),
             ),
             'providers' => collect($this->registry->providers())
                 ->map(fn (array $definition, string $slug): array => [

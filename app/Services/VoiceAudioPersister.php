@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\AI\Cost\TtsEstimateRefiner;
 use App\AI\Results\AudioResult;
 use App\Enums\AssetStatus;
 use App\Enums\AssetType;
 use App\Enums\DialogueLineStatus;
+use App\Enums\ProviderOperation;
 use App\Models\Asset;
 use App\Models\DialogueLine;
 use App\Models\GenerationJob;
@@ -33,6 +35,7 @@ final class VoiceAudioPersister
 {
     public function __construct(
         private readonly AudioDurationProbe $durationProbe,
+        private readonly TtsEstimateRefiner $estimateRefiner,
     ) {}
 
     public function persistNarration(Scene $scene, AudioResult $result, GenerationJob $job, string $provider, ?string $model): Asset
@@ -65,9 +68,14 @@ final class VoiceAudioPersister
         });
     }
 
+    /**
+     * Persists the asset, then refines the ledger row's TTS estimate from the
+     * measured duration (post-transaction: the asset must exist first; a
+     * refinement failure must never fail the voice persistence).
+     */
     private function createAsset(Scene $scene, AudioResult $result, GenerationJob $job, string $provider, ?string $model): Asset
     {
-        return Asset::query()->create([
+        $asset = Asset::query()->create([
             'project_id' => $scene->video->project_id,
             'video_id' => $scene->video_id,
             'type' => AssetType::VoiceAudio,
@@ -79,6 +87,28 @@ final class VoiceAudioPersister
             'meta' => $this->meta($result, $job, $provider, $model, $scene),
             'status' => AssetStatus::Ready,
         ]);
+
+        $durationMs = $asset->meta['duration_ms'] ?? null;
+
+        if (is_int($durationMs) || (is_numeric($durationMs) && (int) $durationMs > 0)) {
+            try {
+                $this->estimateRefiner->refine($job, $this->operationFor($job), (int) $durationMs);
+            } catch (\Throwable) {
+                // Estimate refinement is an accounting optimization; the
+                // voice artifact is already persisted and usable.
+            }
+        }
+
+        return $asset;
+    }
+
+    private function operationFor(GenerationJob $job): ProviderOperation
+    {
+        $payload = is_array($job->payload) ? $job->payload : [];
+
+        return ($payload['subject_type'] ?? '') === 'dialogue'
+            ? ProviderOperation::DialogueTts
+            : ProviderOperation::NarrationTts;
     }
 
     /**

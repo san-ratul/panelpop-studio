@@ -38,6 +38,14 @@ return [
     // never additive (VIDEO_RENDERING.md step 6).
     'transition_seconds' => (float) env('FFMPEG_TRANSITION_SECONDS', 0.5),
 
+    // Layered scene animation (VIDEO_ANIMATION.md): breathing zoom +
+    // emotion-driven camera motion on static scene images. Master switch for
+    // the whole installation; users can still disable it per project or per
+    // video (video settings -> project settings -> this default).
+    'animation' => [
+        'enabled' => env('FFMPEG_ANIMATION_ENABLED', true),
+    ],
+
     // Pre-flight disk-space guard on the temp render area (R-4): refuse to
     // start when free space falls below max(min_free_disk_mb, estimate).
     'min_free_disk_mb' => (int) env('FFMPEG_MIN_FREE_DISK_MB', 500),

@@ -298,4 +298,107 @@ class FfmpegCommandBuilderTest extends TestCase
         $this->assertSame('[0:v]null[v]', $filter);
         $this->assertNotContains('xfade', $args);
     }
+
+    // ------------------------------------------------------------------
+    // Layered animation (VIDEO_ANIMATION.md)
+    // ------------------------------------------------------------------
+
+    public function test_plain_ken_burns_has_no_breathing_term(): void
+    {
+        $args = $this->builder->segmentCommand($this->scene(1, 10.0), 10.0, 'C:/media/img.png', [], '/tmp/seg.mp4');
+        $filter = $args[array_search('-filter_complex', $args, true) + 1];
+
+        $this->assertStringNotContainsString('sin(', $filter);
+    }
+
+    public function test_animated_segment_adds_the_breathing_zoom(): void
+    {
+        $args = $this->builder->segmentCommand($this->scene(1, 10.0), 10.0, 'C:/media/img.png', [], '/tmp/seg.mp4', true);
+        $filter = $args[array_search('-filter_complex', $args, true) + 1];
+
+        $this->assertStringContainsString('zoompan=', $filter);
+        $this->assertStringContainsString('sin(2*PI*on/', $filter);
+        $this->assertStringContainsString('max(1.0,min(', $filter);
+        $this->assertStringContainsString(',1.14))', $filter); // bounded zoom band
+    }
+
+    public function test_animated_motion_is_deterministic_per_scene_and_emotion(): void
+    {
+        $a = $this->builder->segmentCommand($this->scene(1, 10.0), 10.0, 'C:/media/img.png', [], '/tmp/seg.mp4', true);
+        $b = $this->builder->segmentCommand($this->scene(1, 10.0), 10.0, 'C:/media/img.png', [], '/tmp/seg.mp4', true);
+        $c = $this->builder->segmentCommand($this->scene(2, 10.0), 10.0, 'C:/media/img.png', [], '/tmp/seg.mp4', true);
+
+        $this->assertSame($a, $b);
+        $this->assertNotSame(
+            $a[array_search('-filter_complex', $a, true) + 1],
+            $c[array_search('-filter_complex', $c, true) + 1],
+        );
+    }
+
+    public function test_emotion_drives_the_camera_recipe(): void
+    {
+        // Happy: energetic upward drift on the y axis.
+        $happy = FfmpegCommandBuilder::motionRecipe('happy', 1, 300);
+        $this->assertSame('y', $happy['axis']);
+        $this->assertSame(-1, $happy['direction']);
+        $this->assertSame(0.05, $happy['zoom_rate']);
+
+        // Angry: firm centered push-in on x, no shake drift.
+        $angry = FfmpegCommandBuilder::motionRecipe('angry', 1, 300);
+        $this->assertSame('x', $angry['axis']);
+        $this->assertSame(0, $angry['direction']);
+        $this->assertSame(0.07, $angry['zoom_rate']);
+
+        // Sad: gentle pull-back.
+        $sad = FfmpegCommandBuilder::motionRecipe('sad', 1, 300);
+        $this->assertSame(-0.04, $sad['zoom_rate']);
+        $this->assertSame(0.004, $sad['breathing_amplitude']);
+
+        // Calm/whisper: minimal motion.
+        $calm = FfmpegCommandBuilder::motionRecipe('whisper', 1, 300);
+        $this->assertSame(0.02, $calm['zoom_rate']);
+        $this->assertSame(0.003, $calm['breathing_amplitude']);
+
+        // Unknown emotion falls back to the neutral recipe.
+        $unknown = FfmpegCommandBuilder::motionRecipe('mysterious', 1, 300);
+        $neutral = FfmpegCommandBuilder::motionRecipe(null, 1, 300);
+        $this->assertSame($neutral, $unknown);
+    }
+
+    public function test_scene_motion_emotion_prefers_the_first_dialogue_emotion(): void
+    {
+        $lines = [
+            new RenderDialogueLine(1, 'a', null, 'happy'),
+            new RenderDialogueLine(2, 'b', null, 'sad'),
+        ];
+
+        $scene = new RenderPlanScene(
+            number: 1,
+            durationSeconds: 10.0,
+            imageDisk: 'media-private',
+            imagePath: 'images/scene.png',
+            bubbleSettings: null,
+            narrationText: '',
+            narrationAudio: null,
+            dialogueLines: $lines,
+            dominantEmotion: 'angry',
+        );
+
+        $this->assertSame('happy', $scene->motionEmotion());
+
+        $fallback = new RenderPlanScene(
+            number: 1,
+            durationSeconds: 10.0,
+            imageDisk: 'media-private',
+            imagePath: 'images/scene.png',
+            bubbleSettings: null,
+            narrationText: '',
+            narrationAudio: null,
+            dialogueLines: [],
+            dominantEmotion: 'angry',
+        );
+
+        $this->assertSame('angry', $fallback->motionEmotion());
+        $this->assertNull($this->scene(1, 10.0)->motionEmotion());
+    }
 }

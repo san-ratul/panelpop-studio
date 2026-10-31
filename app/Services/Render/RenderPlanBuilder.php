@@ -115,6 +115,7 @@ final class RenderPlanBuilder
             musicAssets: $musicAssets,
             sfxAssets: $sfxAssets,
             warnings: $warnings,
+            animationEnabled: $video->effectiveAnimationEnabled(),
         );
     }
 
@@ -296,6 +297,7 @@ final class RenderPlanBuilder
                     path: $asset->path,
                     durationMs: isset($asset->meta['duration_ms']) ? (int) $asset->meta['duration_ms'] : null,
                 ),
+                emotion: $line->emotion,
             );
         }
 

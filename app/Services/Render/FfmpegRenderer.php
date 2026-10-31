@@ -69,6 +69,7 @@ final class FfmpegRenderer
                 $image,
                 $bubblePaths[$scene->number] ?? [],
                 $segmentPath,
+                $plan->animationEnabled,
             );
 
             $result = $this->runner->run($args, $this->settings->timeoutSeconds);

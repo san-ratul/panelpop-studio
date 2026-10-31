@@ -236,6 +236,15 @@ return [
             // response carries no usage payload, so cost_actual stays null).
             'estimate_text_tokens_overhead' => 16,
             'estimate_audio_output_tokens_per_request' => 25000,
+
+            // POST-CALL refinement rate (VIDEO/COST docs): once the produced
+            // audio is measured (duration_ms from the WAV header), the
+            // per-request ceiling above is replaced by
+            // ceil(duration_seconds × this rate) audio tokens priced at the
+            // list rate — an estimate, but a duration-derived one instead of
+            // a request ceiling. 50 tokens/second is the documented central
+            // figure for OpenAI voices (real range ~25–100).
+            'estimate_audio_tokens_per_second' => 50,
         ],
     ],
 
