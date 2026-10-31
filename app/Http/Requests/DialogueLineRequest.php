@@ -19,11 +19,15 @@ class DialogueLineRequest extends FormRequest
         $line = $this->route('dialogueLine');
 
         return [
+            // Manual speaker correction: null = narrator line. The character
+            // must belong to the scene's project (reusable characters).
             'character_id' => [
                 'nullable',
-                Rule::exists('characters', 'id')->where('project_id', $scene instanceof Scene ? $scene->project_id : 0),
+                Rule::exists('characters', 'id')->where('project_id', $scene instanceof Scene ? $scene->video->project_id : 0),
             ],
             'text' => ['required', 'string', 'max:5000'],
+            'emotion' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'voice_instructions' => ['sometimes', 'nullable', 'string', 'max:4096'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
         ];
     }

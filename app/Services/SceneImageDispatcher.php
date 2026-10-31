@@ -7,14 +7,17 @@ use App\Enums\SceneStatus;
 use App\Models\Character;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use Illuminate\Support\Collection;
 
 /**
- * Queues scene-image generation with dependency ordering: a scene is only
- * queued once every character it depends on has a reference image; scenes
- * whose references are still missing are reported as "waiting". Scenes that
- * already have a ready image are never re-queued without an explicit
- * regenerate flag (dedupe, COST_MANAGEMENT.md).
+ * Queues scene-image generation for ONE video with dependency ordering: a
+ * scene is only queued once every character it depends on has a reference
+ * image; scenes whose references are still missing are reported as "waiting".
+ * Scenes that already have a ready image are never re-queued without an
+ * explicit regenerate flag (dedupe, COST_MANAGEMENT.md). Video scoping means
+ * two videos of one project never queue-block each other; character
+ * references themselves remain project-level (reusable).
  */
 final class SceneImageDispatcher
 {
@@ -26,18 +29,18 @@ final class SceneImageDispatcher
     ) {}
 
     /**
-     * Queues scene-image jobs for every scene that still needs one and whose
-     * character references are complete.
+     * Queues scene-image jobs for every scene of this video that still needs
+     * one and whose character references are complete.
      *
      * @return array{queued: int, waiting: int}
      */
-    public function dispatchPendingForProject(Project $project, bool $force = false): array
+    public function dispatchPendingForVideo(Video $video, bool $force = false): array
     {
         $queued = 0;
         $waiting = 0;
 
-        foreach ($project->scenes()->with('dialogueLines')->orderBy('number')->get() as $scene) {
-            $required = $this->requiredCharacters($project, $scene);
+        foreach ($video->scenes()->with('dialogueLines')->orderBy('number')->get() as $scene) {
+            $required = $this->requiredCharacters($video->project, $scene);
 
             if ($required->contains(fn (Character $character): bool => $character->reference_asset_id === null)) {
                 $waiting++;
@@ -45,7 +48,7 @@ final class SceneImageDispatcher
                 continue;
             }
 
-            if ($this->queueScene($project, $scene, $required, $force)) {
+            if ($this->queueScene($video, $scene, $required, $force)) {
                 $queued++;
             }
         }
@@ -53,15 +56,10 @@ final class SceneImageDispatcher
         return ['queued' => $queued, 'waiting' => $waiting];
     }
 
-    public function dispatchForScene(Project $project, Scene $scene, bool $force = false): bool
-    {
-        return $this->queueScene($project, $scene, $this->requiredCharacters($project, $scene), $force);
-    }
-
     /**
      * @param  Collection<int, Character>  $required
      */
-    private function queueScene(Project $project, Scene $scene, $required, bool $force): bool
+    private function queueScene(Video $video, Scene $scene, Collection $required, bool $force): bool
     {
         // Dedupe: a ready scene with an image is never re-generated without an
         // explicit regenerate flag.
@@ -69,17 +67,17 @@ final class SceneImageDispatcher
             return false;
         }
 
-        if ($this->guard->activeJobForSubject($project, GenerationJobType::SceneImage, 'scene_id', $scene->id) !== null) {
+        if ($this->guard->activeJobForSubject($video->project, GenerationJobType::SceneImage, 'scene_id', $scene->id) !== null) {
             return false;
         }
 
         $this->markQueued($scene);
 
-        $this->guard->launch($project, GenerationJobType::SceneImage, [
+        $this->guard->launch($video->project, GenerationJobType::SceneImage, [
             'scene_id' => $scene->id,
             'scene_number' => $scene->number,
             'force' => $force,
-        ]);
+        ], $video);
 
         return true;
     }

@@ -135,9 +135,12 @@ final class GenerateCharacterReferenceJob implements ShouldQueue
             ]);
 
             // Dependency fan-out: once every character has a reference image,
-            // scene images that were waiting may be queued.
+            // the waiting scene images of every video in the project may be
+            // queued (references are project-level and shared by all videos).
             if ($project->characters()->whereNull('reference_asset_id')->doesntExist()) {
-                $sceneDispatcher->dispatchPendingForProject($project->fresh() ?? $project);
+                foreach ($project->videos()->get() as $video) {
+                    $sceneDispatcher->dispatchPendingForVideo($video);
+                }
             }
         } catch (Throwable $exception) {
             $this->failJob($job, $exception);

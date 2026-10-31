@@ -13,7 +13,9 @@ use App\Http\Requests\GenerateVideoMetadataRequest;
 use App\Http\Requests\SaveVideoMetadataRequest;
 use App\Models\Asset;
 use App\Models\Project;
+use App\Models\Video;
 use App\Services\AudioLicenceGate;
+use App\Services\Cost\VideoCostReport;
 use App\Services\GenerationJobGuard;
 use App\Services\Render\BinaryProbe;
 use App\Services\VideoMetadataService;
@@ -25,7 +27,7 @@ use Inertia\Response;
 use Throwable;
 
 /**
- * Phase 6 render workflow: initiate rendering, monitor status, retry, and
+ * Per-video render workflow: initiate rendering, monitor status, retry, and
  * reach the authorized download/preview endpoints (downloads flow through the
  * policy-checked assets.show route — private paths are never exposed).
  * Pre-flight itself runs inside the queued job; this layer only guards
@@ -43,16 +45,16 @@ class ProjectRenderController extends Controller
         private readonly BinaryProbe $binaryProbe,
         private readonly AudioLicenceGate $licenceGate,
         private readonly VideoMetadataService $metadataService,
+        private readonly VideoCostReport $costReport,
     ) {}
 
-    public function show(Project $project): Response
+    public function show(Project $project, Video $video): Response
     {
-        $this->authorize('view', $project);
+        $this->authorize('view', $video);
 
-        $renderJobs = GenerationJobPresenter::recent($project, GenerationJobType::VideoRender);
-        $latest = $renderJobs[0] ?? null;
+        $renderJobs = GenerationJobPresenter::recent($video, GenerationJobType::VideoRender);
 
-        $assets = $project->assets()
+        $assets = $video->assets()
             ->whereIn('type', [AssetType::Video->value, AssetType::Thumbnail->value, AssetType::Subtitle->value])
             ->where('status', 'ready')
             ->orderByDesc('id')
@@ -61,44 +63,46 @@ class ProjectRenderController extends Controller
 
         return Inertia::render('Render/Show', [
             'project' => ProjectController::present($project),
+            'video' => VideoController::present($video),
             'renderJobs' => $renderJobs,
             'renderJobActive' => GenerationJobPresenter::hasActive($renderJobs),
             'videoAsset' => $assets->firstWhere('type', AssetType::Video->value),
             'thumbnailAsset' => $assets->firstWhere('type', AssetType::Thumbnail->value),
             'subtitleAsset' => $assets->firstWhere('type', AssetType::Subtitle->value),
             'blockedAssets' => $this->licenceGate->blockMessages($project),
-            'silentMode' => in_array($project->presentation_mode, [PresentationMode::Silent, PresentationMode::SpeechBubbles], true),
+            'silentMode' => in_array($video->effectivePresentationMode(), [PresentationMode::Silent, PresentationMode::SpeechBubbles], true),
             'ffmpegConfigured' => $this->binaryProbe->configured(),
-            'canRender' => $this->canRender($project),
-            'videoMetadata' => $project->videoMetadata ? [
-                'platform' => $project->videoMetadata->platform->value,
-                'title' => $project->videoMetadata->title,
-                'description' => $project->videoMetadata->description,
-                'generation_meta' => $project->videoMetadata->generation_meta,
+            'canRender' => $this->canRender($project, $video),
+            'videoMetadata' => $video->videoMetadata ? [
+                'platform' => $video->videoMetadata->platform->value,
+                'title' => $video->videoMetadata->title,
+                'description' => $video->videoMetadata->description,
+                'generation_meta' => $video->videoMetadata->generation_meta,
             ] : null,
+            'cost' => $this->costReport->forVideo($video),
         ]);
     }
 
-    public function store(Project $project): RedirectResponse
+    public function store(Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
-        $this->jobGuard->cancelStale($project, GenerationJobType::VideoRender);
+        $this->jobGuard->cancelStale($project, GenerationJobType::VideoRender, $video);
 
-        $active = $this->jobGuard->activeJob($project, GenerationJobType::VideoRender);
+        $active = $this->jobGuard->activeJob($project, GenerationJobType::VideoRender, $video);
 
         if ($active !== null) {
             throw ValidationException::withMessages([
                 'render' => sprintf(
-                    'A render is already %s for this project. Wait for it to finish.',
+                    'A render is already %s for this video. Wait for it to finish.',
                     $active->status->value,
                 ),
             ]);
         }
 
-        if (in_array($project->status, [ProjectStatus::Draft, ProjectStatus::StoryReady, ProjectStatus::Rendering], true)) {
+        if (in_array($video->status, [ProjectStatus::Draft, ProjectStatus::StoryReady, ProjectStatus::Rendering], true)) {
             throw ValidationException::withMessages([
-                'render' => 'This project cannot start a render right now. Complete the storyboard (and wait for any running render) first.',
+                'render' => 'This video cannot start a render right now. Complete the storyboard (and wait for any running render) first.',
             ]);
         }
 
@@ -109,27 +113,27 @@ class ProjectRenderController extends Controller
         }
 
         $this->jobGuard->launch($project, GenerationJobType::VideoRender, [
-            'presentation_mode' => $project->presentation_mode->value,
-        ]);
+            'presentation_mode' => $video->effectivePresentationMode()->value,
+        ], $video);
 
-        return redirect()->route('render.show', $project)
+        return redirect()->route('render.show', [$project, $video])
             ->with('success', 'Render queued.');
     }
 
     /**
      * Generates (but does not persist) a title/description for the selected
-     * platform from the project's story, storyboard and render facts. The
+     * platform from the video's story, storyboard and render facts. The
      * generated values are flashed to the render page so the user can review
      * and edit them before the explicit save.
      */
-    public function generateMetadata(GenerateVideoMetadataRequest $request, Project $project): RedirectResponse
+    public function generateMetadata(GenerateVideoMetadataRequest $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
         $platform = $request->validated('platform');
 
         try {
-            $metadata = $this->metadataService->generate($project, $platform);
+            $metadata = $this->metadataService->generate($video, $platform);
         } catch (ProviderException $exception) {
             throw ValidationException::withMessages([
                 'metadata' => sprintf('Metadata generation failed: %s', $exception->getMessage()),
@@ -137,6 +141,7 @@ class ProjectRenderController extends Controller
         } catch (Throwable $exception) {
             Log::error('Video metadata generation failed unexpectedly.', [
                 'project_id' => $project->id,
+                'video_id' => $video->id,
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),
             ]);
@@ -146,7 +151,7 @@ class ProjectRenderController extends Controller
             ]);
         }
 
-        return redirect()->route('render.show', $project)
+        return redirect()->route('render.show', [$project, $video])
             ->with('generated_metadata', [
                 'platform' => $platform,
                 'title' => $metadata->title,
@@ -159,26 +164,26 @@ class ProjectRenderController extends Controller
      * Persists user-reviewed metadata (an explicit overwrite — generation
      * never writes to the database).
      */
-    public function saveMetadata(SaveVideoMetadataRequest $request, Project $project): RedirectResponse
+    public function saveMetadata(SaveVideoMetadataRequest $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
         $data = $request->validated();
 
-        $metadata = $project->videoMetadata()->firstOrNew(['project_id' => $project->id]);
+        $metadata = $video->videoMetadata()->firstOrNew(['video_id' => $video->id]);
         $metadata->platform = VideoMetadataPlatform::from($data['platform']);
         $metadata->title = $data['title'];
         $metadata->description = $data['description'];
         $metadata->save();
 
-        return redirect()->route('render.show', $project)
+        return redirect()->route('render.show', [$project, $video])
             ->with('success', 'Video metadata saved.');
     }
 
-    private function canRender(Project $project): bool
+    private function canRender(Project $project, Video $video): bool
     {
-        return ! in_array($project->status, [ProjectStatus::Draft, ProjectStatus::StoryReady, ProjectStatus::Rendering], true)
-            && $this->jobGuard->activeJob($project, GenerationJobType::VideoRender) === null
+        return ! in_array($video->status, [ProjectStatus::Draft, ProjectStatus::StoryReady, ProjectStatus::Rendering], true)
+            && $this->jobGuard->activeJob($project, GenerationJobType::VideoRender, $video) === null
             && $this->binaryProbe->configured();
     }
 

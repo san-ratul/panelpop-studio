@@ -66,7 +66,7 @@ class FfmpegCommandBuilderTest extends TestCase
 
     private function plan(array $scenes, array $music = [], array $sfx = []): RenderPlan
     {
-        return new RenderPlan(1, PresentationMode::Narrator->value, $scenes, $music, $sfx, []);
+        return new RenderPlan(1, 1, PresentationMode::Narrator->value, $scenes, $music, $sfx, []);
     }
 
     public function test_segment_command_carries_the_output_contract(): void

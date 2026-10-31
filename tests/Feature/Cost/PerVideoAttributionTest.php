@@ -12,15 +12,17 @@ use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Cost\CostAnalyticsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Per-video double-count protection: a project re-rendered several times
+ * Per-video double-count protection: a video re-rendered several times
  * must carry its provider ledger cost ONCE (re-renders reuse the same
  * assets and create no new provider operations), while render
- * infrastructure stays measured per render.
+ * infrastructure stays measured per render. Ledger rows carry the
+ * attribution directly via provider_calls.video_id.
  */
 class PerVideoAttributionTest extends TestCase
 {
@@ -31,10 +33,12 @@ class PerVideoAttributionTest extends TestCase
         $admin = User::factory()->create(['is_admin' => true]);
         $member = User::factory()->create();
         $project = Project::factory()->for($member)->create(['title' => 'Attribution probe']);
+        $video = $this->makeVideo($project);
 
-        // Two provider operations on the project: one measured actual, one
-        // estimate-only TTS.
+        // Two provider operations on the video's pipeline: one measured
+        // actual, one estimate-only TTS — both attributed via video_id.
         ProviderCall::factory()->for($project, 'project')->create([
+            'video_id' => $video->id,
             'user_id' => $member->id,
             'operation' => ProviderOperation::Story->value,
             'status' => ProviderCallStatus::Success->value,
@@ -45,6 +49,7 @@ class PerVideoAttributionTest extends TestCase
         ]);
 
         ProviderCall::factory()->for($project, 'project')->create([
+            'video_id' => $video->id,
             'user_id' => $member->id,
             'operation' => ProviderOperation::NarrationTts->value,
             'status' => ProviderCallStatus::Success->value,
@@ -54,9 +59,10 @@ class PerVideoAttributionTest extends TestCase
             'cost_estimate' => 0.30,
         ]);
 
-        // Two completed renders of the SAME project: infra is measured per
+        // Two completed renders of the SAME video: infra is measured per
         // render (120 s and 240 s wall time at $0.001/s → $0.12 / $0.24).
         $first = GenerationJob::factory()->for($project)->create([
+            'video_id' => $video->id,
             'type' => GenerationJobType::VideoRender->value,
             'status' => GenerationJobStatus::Succeeded->value,
             'started_at' => now()->subMinutes(10),
@@ -65,6 +71,7 @@ class PerVideoAttributionTest extends TestCase
         ]);
 
         $second = GenerationJob::factory()->for($project)->create([
+            'video_id' => $video->id,
             'type' => GenerationJobType::VideoRender->value,
             'status' => GenerationJobStatus::Succeeded->value,
             'started_at' => now()->subMinutes(5),
@@ -83,7 +90,8 @@ class PerVideoAttributionTest extends TestCase
         $carrier = $videos[$first->id];
         $rerender = $videos[$second->id];
 
-        // The earliest render in the window carries the project cost once.
+        // The earliest render in the window carries the video's provider
+        // cost once.
         $this->assertTrue($carrier['provider_cost_attributed']);
         $this->assertFalse($rerender['provider_cost_attributed']);
         $this->assertSame($first->id, $rerender['provider_cost_attributed_to_render_id']);

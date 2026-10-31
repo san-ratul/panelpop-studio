@@ -62,6 +62,47 @@ final class OpenAISchemas
     /**
      * @return array<string, mixed>
      */
+    public static function dialogueVoiceAssignment(): array
+    {
+        return [
+            'type' => 'object',
+            'properties' => [
+                'assignments' => [
+                    'type' => 'array',
+                    'description' => 'One entry per input dialogue line, using the same line ids.',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'line_id' => [
+                                'type' => 'integer',
+                                'description' => 'The input line id.',
+                            ],
+                            'speaker' => [
+                                'type' => 'string',
+                                'description' => 'The speaking character name exactly as provided, or the literal word narrator.',
+                            ],
+                            'emotion' => [
+                                'type' => ['string', 'null'],
+                                'description' => 'One-word emotional tone of the line, e.g. happy, sad, angry, scared, excited, whisper, calm, neutral.',
+                            ],
+                            'voice_instructions' => [
+                                'type' => ['string', 'null'],
+                                'description' => 'Short contextual delivery instruction (tone, energy, pace) consistent with the emotion.',
+                            ],
+                        ],
+                        'required' => ['line_id', 'speaker', 'emotion', 'voice_instructions'],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+            'required' => ['assignments'],
+            'additionalProperties' => false,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     public static function scenePlan(): array
     {
         return [
@@ -116,6 +157,10 @@ final class OpenAISchemas
                                 'type' => ['string', 'null'],
                                 'description' => 'Narrator voice-over text for this scene, or null when the mode has no narration.',
                             ],
+                            'narration_voice_instructions' => [
+                                'type' => ['string', 'null'],
+                                'description' => 'Delivery instruction for the narrator on this scene (tone, pace, emotion), at most 4096 characters. Null when the scene has no narration.',
+                            ],
                             'dialogue' => [
                                 'type' => 'array',
                                 'description' => 'Spoken lines in order; empty when the mode has no dialogue.',
@@ -130,13 +175,21 @@ final class OpenAISchemas
                                             'type' => 'string',
                                             'description' => 'The spoken line.',
                                         ],
+                                        'emotion' => [
+                                            'type' => ['string', 'null'],
+                                            'description' => 'One-word emotional tone of this line, e.g. happy, sad, angry, scared, excited, whisper, calm, neutral.',
+                                        ],
+                                        'voice_instructions' => [
+                                            'type' => ['string', 'null'],
+                                            'description' => 'Contextual delivery instruction for THIS line (tone, energy, pace, emotion), at most 4096 characters.',
+                                        ],
                                     ],
-                                    'required' => ['character_name', 'text'],
+                                    'required' => ['character_name', 'text', 'emotion', 'voice_instructions'],
                                     'additionalProperties' => false,
                                 ],
                             ],
                         ],
-                        'required' => ['number', 'duration_seconds', 'background_description', 'image_prompt', 'narration_text', 'dialogue'],
+                        'required' => ['number', 'duration_seconds', 'background_description', 'image_prompt', 'narration_text', 'narration_voice_instructions', 'dialogue'],
                         'additionalProperties' => false,
                     ],
                 ],

@@ -40,7 +40,7 @@ final class VoiceAudioPersister
         return DB::transaction(function () use ($scene, $result, $job, $provider, $model): Asset {
             $this->deleteExisting($scene->narrationAudioAsset, $result);
 
-            $asset = $this->createAsset($scene->project_id, $result, $job, $provider, $model, $scene);
+            $asset = $this->createAsset($scene, $result, $job, $provider, $model);
 
             $scene->update(['narration_audio_asset_id' => $asset->id]);
 
@@ -53,7 +53,7 @@ final class VoiceAudioPersister
         return DB::transaction(function () use ($line, $result, $job, $provider, $model): Asset {
             $this->deleteExisting($line->audioAsset, $result);
 
-            $asset = $this->createAsset($line->scene->project_id, $result, $job, $provider, $model, $line->scene);
+            $asset = $this->createAsset($line->scene, $result, $job, $provider, $model);
 
             $line->update([
                 'audio_asset_id' => $asset->id,
@@ -65,10 +65,11 @@ final class VoiceAudioPersister
         });
     }
 
-    private function createAsset(int $projectId, AudioResult $result, GenerationJob $job, string $provider, ?string $model, Scene $scene): Asset
+    private function createAsset(Scene $scene, AudioResult $result, GenerationJob $job, string $provider, ?string $model): Asset
     {
         return Asset::query()->create([
-            'project_id' => $projectId,
+            'project_id' => $scene->video->project_id,
+            'video_id' => $scene->video_id,
             'type' => AssetType::VoiceAudio,
             'disk' => $result->disk,
             'path' => $result->path,

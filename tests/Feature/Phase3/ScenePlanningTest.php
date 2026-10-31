@@ -17,6 +17,7 @@ use App\Models\ProviderCall;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Models\User;
+use App\Models\Video;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -33,6 +34,8 @@ class ScenePlanningTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -43,8 +46,9 @@ class ScenePlanningTest extends TestCase
 
         $this->user = User::factory()->create();
         $this->project = Project::factory()->for($this->user)->create(['status' => 'story_ready']);
+        $this->video = $this->makeVideo($this->project, ['status' => 'story_ready']);
 
-        Story::factory()->for($this->project)->create([
+        Story::factory()->for($this->video)->create([
             'title' => 'The Deterministic Robot',
             'full_text' => 'A small robot paints cartoon panels every night.',
             'status' => StoryStatus::Ready,
@@ -88,8 +92,9 @@ class ScenePlanningTest extends TestCase
                     'background_description' => 'A tidy workshop at night.',
                     'image_prompt' => 'Simple 2D cartoon workshop at night, 9:16 vertical.',
                     'narration_text' => 'Every night, Robby painted.',
+                    'narration_voice_instructions' => 'Speak warmly, like a bedtime story narrator.',
                     'dialogue' => [
-                        ['character_name' => 'Robby', 'text' => 'Another panel done!'],
+                        ['character_name' => 'Robby', 'text' => 'Another panel done!', 'emotion' => 'cheerful', 'voice_instructions' => 'Bright, friendly delivery.'],
                     ],
                 ],
                 [
@@ -131,13 +136,14 @@ class ScenePlanningTest extends TestCase
     {
         $this->fakeTextDefault();
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
-        $this->project->refresh();
+        $this->video->refresh();
 
-        $this->assertSame(ProjectStatus::StoryReady, $this->project->status);
+        $this->assertSame(ProjectStatus::StoryReady, $this->video->status);
+        $this->assertSame(ProjectStatus::StoryReady, $this->project->refresh()->status);
 
-        $scenes = $this->project->scenes()->get();
+        $scenes = $this->video->scenes()->get();
 
         $this->assertSame(3, $scenes->count());
         $this->assertSame([1, 2, 3], $scenes->pluck('number')->all());
@@ -149,6 +155,7 @@ class ScenePlanningTest extends TestCase
 
         $this->assertSame(GenerationJobType::ScenePlanning, $job->type);
         $this->assertSame(GenerationJobStatus::Succeeded, $job->status);
+        $this->assertSame($this->video->id, $job->video_id);
         $this->assertSame(3, $job->result['scenes']);
         $this->assertEqualsWithDelta(60.0, $job->result['duration_total'], 0.001);
         $this->assertNull($job->result['duration_warning']);
@@ -165,7 +172,7 @@ class ScenePlanningTest extends TestCase
             'https://api.openai.com/v1/responses' => Http::response($this->openAIPlanResponse(), 200),
         ]);
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
         $character = Character::query()->sole();
 
@@ -177,10 +184,14 @@ class ScenePlanningTest extends TestCase
 
         $this->assertSame($character->id, $line->character_id);
         $this->assertSame('Another panel done!', $line->text);
+        $this->assertSame('cheerful', $line->emotion);
+        $this->assertSame('Bright, friendly delivery.', $line->voice_instructions);
         $this->assertSame(1, $line->sort_order);
 
-        $scenes = $this->project->scenes()->orderBy('number')->get();
+        $scenes = $this->video->scenes()->orderBy('number')->get();
         $this->assertSame(1, $scenes[0]->dialogueLines()->count());
+        $this->assertSame('Speak warmly, like a bedtime story narrator.', $scenes[0]->narration_voice_instructions);
+        $this->assertNull($scenes[1]->narration_voice_instructions);
         $this->assertSame(0, $scenes[1]->dialogueLines()->count());
     }
 
@@ -188,10 +199,10 @@ class ScenePlanningTest extends TestCase
     {
         $this->fakeTextDefault();
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
-        $this->assertSame(3, $this->project->scenes()->count());
+        $this->assertSame(3, $this->video->scenes()->count());
         $this->assertSame(2, GenerationJob::query()->count());
         $this->assertSame(2, ProviderCall::count());
 
@@ -205,13 +216,13 @@ class ScenePlanningTest extends TestCase
         $this->fakeTextDefault();
 
         $manual = collect([
-            Scene::factory()->for($this->project)->create(['number' => 1]),
-            Scene::factory()->for($this->project)->create(['number' => 2]),
+            Scene::factory()->for($this->video)->create(['number' => 1]),
+            Scene::factory()->for($this->video)->create(['number' => 2]),
         ]);
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
-        $sceneIds = $this->project->scenes()->pluck('id');
+        $sceneIds = $this->video->scenes()->pluck('id');
 
         $this->assertSame(3, $sceneIds->count());
         $sceneIds->each(
@@ -228,7 +239,7 @@ class ScenePlanningTest extends TestCase
             'https://api.openai.com/v1/responses' => Http::response($this->openAIPlanResponse(10.0), 200),
         ]);
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
         $job = GenerationJob::query()->sole();
 
@@ -237,19 +248,21 @@ class ScenePlanningTest extends TestCase
         $this->assertStringContainsString('outside the target of 60', $job->result['duration_warning']);
 
         // The hard ±2 s gate still belongs to storyboard completion.
-        $this->from(route('storyboard.show', $this->project))
-            ->post(route('storyboard.complete', $this->project))
+        $this->from(route('storyboard.show', [$this->project, $this->video]))
+            ->post(route('storyboard.complete', [$this->project, $this->video]))
             ->assertSessionHasErrors('duration_sum');
 
+        $this->assertSame(ProjectStatus::StoryReady, $this->video->fresh()->status);
         $this->assertSame(ProjectStatus::StoryReady, $this->project->fresh()->status);
     }
 
     public function test_planning_requires_a_ready_story(): void
     {
         $projectWithoutStory = Project::factory()->for($this->user)->create();
+        $videoWithoutStory = $this->makeVideo($projectWithoutStory);
 
-        $this->from(route('storyboard.show', $projectWithoutStory))
-            ->post(route('storyboard.generate-plan', $projectWithoutStory))
+        $this->from(route('storyboard.show', [$projectWithoutStory, $videoWithoutStory]))
+            ->post(route('storyboard.generate-plan', [$projectWithoutStory, $videoWithoutStory]))
             ->assertSessionHasErrors('plan');
 
         $this->assertSame(0, GenerationJob::count());
@@ -262,7 +275,7 @@ class ScenePlanningTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->post(route('storyboard.generate-plan', $this->project))
+            ->post(route('storyboard.generate-plan', [$this->project, $this->video]))
             ->assertForbidden();
 
         $this->assertSame(0, GenerationJob::count());
@@ -274,10 +287,10 @@ class ScenePlanningTest extends TestCase
 
         Queue::fake();
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
-        $this->from(route('storyboard.show', $this->project))
-            ->post(route('storyboard.generate-plan', $this->project))
+        $this->from(route('storyboard.show', [$this->project, $this->video]))
+            ->post(route('storyboard.generate-plan', [$this->project, $this->video]))
             ->assertSessionHasErrors('plan');
 
         $this->assertSame(1, GenerationJob::count());
@@ -288,12 +301,12 @@ class ScenePlanningTest extends TestCase
         $this->fakeTextDefault();
         app(FakeProviderScenario::class)->failAuth(ProviderCapability::Text);
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
-        $before = Scene::factory()->for($this->project)->create(['number' => 9]);
+        $before = Scene::factory()->for($this->video)->create(['number' => 9]);
 
         // Pre-existing scene from an earlier plan; the failed run must not touch it.
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
         $job = GenerationJob::query()->latest('id')->first();
 
@@ -301,8 +314,8 @@ class ScenePlanningTest extends TestCase
         $this->assertSame(ProviderAuthException::class, $job->error_class);
         $this->assertSame(1, $job->attempts);
 
-        $this->assertTrue($this->project->scenes()->whereKey($before->id)->exists());
-        $this->assertSame(StoryStatus::Ready, $this->project->fresh()->story->status);
+        $this->assertTrue($this->video->scenes()->whereKey($before->id)->exists());
+        $this->assertSame(StoryStatus::Ready, $this->video->fresh()->story->status);
     }
 
     public function test_a_domain_invalid_plan_records_the_specific_rejection_reasons(): void
@@ -310,7 +323,7 @@ class ScenePlanningTest extends TestCase
         $this->fakeTextDefault();
         app(FakeProviderScenario::class)->scriptInvalidPlan();
 
-        $this->post(route('storyboard.generate-plan', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]))->assertRedirect();
 
         $job = GenerationJob::query()->latest('id')->first();
 
@@ -321,16 +334,16 @@ class ScenePlanningTest extends TestCase
         $this->assertStringContainsString('rejected by validation', (string) $job->error_message);
         $this->assertStringContainsString('may not exceed 120 s', (string) $job->error_message);
 
-        $this->assertSame(0, $this->project->scenes()->count());
+        $this->assertSame(0, $this->video->scenes()->count());
     }
 
     public function test_storyboard_page_shows_plan_jobs(): void
     {
         $this->fakeTextDefault();
 
-        $this->post(route('storyboard.generate-plan', $this->project));
+        $this->post(route('storyboard.generate-plan', [$this->project, $this->video]));
 
-        $this->get(route('storyboard.show', $this->project))
+        $this->get(route('storyboard.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertSee('"type":"scene_planning"', false)
             ->assertSee('"status":"succeeded"', false);

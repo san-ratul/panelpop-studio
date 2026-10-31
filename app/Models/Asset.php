@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'project_id',
+    'video_id',
     'type',
     'disk',
     'path',
@@ -58,6 +59,11 @@ class Asset extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function video(): BelongsTo
+    {
+        return $this->belongsTo(Video::class);
     }
 
     public function audioLicence(): HasOne

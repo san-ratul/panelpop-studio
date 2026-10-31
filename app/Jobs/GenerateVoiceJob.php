@@ -17,6 +17,7 @@ use App\Models\DialogueLine;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Services\VoiceAudioPersister;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -30,10 +31,21 @@ use Throwable;
 /**
  * Synthesizes one voice artifact via the configured TTS provider: either a
  * scene narration block (subject_type "narration") or a dialogue line
- * (subject_type "dialogue"). Queue job never retries ($tries = 1);
- * provider-level retries live in the gateway. Failures mark only their own
- * subject. Silent-mode projects never reach this job (dispatch-time guard),
- * and the job re-checks defensively before any provider call.
+ * (subject_type "dialogue").
+ *
+ * Voice resolution (VOICE_WORKFLOW.md):
+ * - narration: the video's effective narrator voice config (video override,
+ *   else project default), with the scene's narration voice instructions
+ *   appended as contextual delivery guidance when present.
+ * - dialogue:  the assigned character's configured voice (name + speed),
+ *   with the dialogue line's AI-assigned contextual voice instructions
+ *   overriding the character's default delivery when present. A line without
+ *   a character falls back to the narrator voice config.
+ *
+ * Queue job never retries ($tries = 1); provider-level retries live in the
+ * gateway. Failures mark only their own subject. Silent-mode videos never
+ * reach this job (dispatch-time guard), and the job re-checks defensively
+ * before any provider call.
  */
 final class GenerateVoiceJob implements ShouldQueue
 {
@@ -70,14 +82,16 @@ final class GenerateVoiceJob implements ShouldQueue
     {
         $job = GenerationJob::query()->find($this->generationJobId);
         $project = Project::query()->find($this->projectId);
-        $scene = $project?->scenes()->find($this->sceneId);
+        $scene = Scene::query()->find($this->sceneId);
+        $video = $scene?->video;
 
         $line = $this->dialogueLineId !== null && $scene !== null
             ? $scene->dialogueLines()->find($this->dialogueLineId)
             : null;
 
-        if ($job === null || $project === null || $scene === null
+        if ($job === null || $project === null || $scene === null || $video === null
             || $job->type !== GenerationJobType::VoiceGeneration
+            || ($job->video_id !== null && $job->video_id !== $video->id)
             || ! in_array($this->subjectType, ['narration', 'dialogue'], true)
             || ($this->subjectType === 'dialogue' && $line === null)) {
             return;
@@ -87,8 +101,8 @@ final class GenerateVoiceJob implements ShouldQueue
             return;
         }
 
-        if ($this->violatesSilentMode($project)) {
-            $message = 'This project mode requires no audio, so the voice job was cancelled before any provider call.';
+        if ($this->violatesSilentMode($video)) {
+            $message = 'This video mode requires no audio, so the voice job was cancelled before any provider call.';
 
             $job->update([
                 'status' => GenerationJobStatus::Cancelled,
@@ -109,16 +123,18 @@ final class GenerateVoiceJob implements ShouldQueue
             return;
         }
 
-        $this->run($manager, $gateway, $persister, $job, $project, $scene, $line);
+        $this->run($manager, $gateway, $persister, $job, $project, $video, $scene, $line);
     }
 
-    private function violatesSilentMode(Project $project): bool
+    private function violatesSilentMode(Video $video): bool
     {
+        $mode = $video->effectivePresentationMode();
+
         if ($this->subjectType === 'narration') {
-            return ! in_array($project->presentation_mode, [PresentationMode::Narrator, PresentationMode::Hybrid], true);
+            return ! in_array($mode, [PresentationMode::Narrator, PresentationMode::Hybrid], true);
         }
 
-        return ! in_array($project->presentation_mode, [PresentationMode::Dialogue, PresentationMode::Hybrid], true);
+        return ! in_array($mode, [PresentationMode::Dialogue, PresentationMode::Hybrid], true);
     }
 
     private function run(
@@ -127,6 +143,7 @@ final class GenerateVoiceJob implements ShouldQueue
         VoiceAudioPersister $persister,
         GenerationJob $job,
         Project $project,
+        Video $video,
         Scene $scene,
         ?DialogueLine $line,
     ): void {
@@ -186,9 +203,7 @@ final class GenerateVoiceJob implements ShouldQueue
         }
 
         try {
-            $voiceConfig = $isNarration
-                ? (array) ($project->settings['narration_voice_config'] ?? [])
-                : (array) ($line?->character?->voice_config ?? []);
+            $voiceConfig = $this->voiceConfigFor($isNarration, $video, $scene, $line);
 
             $resolved = $manager->resolve(ProviderCapability::Tts, $project);
 
@@ -204,6 +219,7 @@ final class GenerateVoiceJob implements ShouldQueue
                     $job->id,
                     $project->user_id,
                     $isNarration ? ProviderOperation::NarrationTts : ProviderOperation::DialogueTts,
+                    $video->id,
                 ),
             );
 
@@ -231,6 +247,40 @@ final class GenerateVoiceJob implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    /**
+     * Resolves the TTS voice configuration for this subject. Character voice
+     * selection wins for dialogue lines; contextual (AI-assigned) voice
+     * instructions override the character's default delivery instructions.
+     *
+     * @return array<string, mixed>
+     */
+    private function voiceConfigFor(bool $isNarration, Video $video, Scene $scene, ?DialogueLine $line): array
+    {
+        if ($isNarration) {
+            $config = (array) ($video->effectiveNarrationVoiceConfig() ?? []);
+
+            if (is_string($scene->narration_voice_instructions) && trim($scene->narration_voice_instructions) !== '') {
+                $config['instructions'] = trim($scene->narration_voice_instructions);
+            }
+
+            return $config;
+        }
+
+        $characterConfig = (array) ($line?->character?->voice_config ?? []);
+
+        // A dialogue line without an assigned character speaks with the
+        // narrator voice (never silently dropped).
+        $config = $characterConfig !== []
+            ? $characterConfig
+            : (array) ($video->effectiveNarrationVoiceConfig() ?? []);
+
+        if (is_string($line?->voice_instructions) && trim($line->voice_instructions) !== '') {
+            $config['instructions'] = trim($line->voice_instructions);
+        }
+
+        return $config;
     }
 
     private function failJob(GenerationJob $job, Throwable $exception, Scene $scene, ?DialogueLine $line): void

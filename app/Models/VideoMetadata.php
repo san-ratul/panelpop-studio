@@ -8,12 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Publishing metadata (title + description + target platform) for a
- * project's completed video, 1:1 with the project like stories. Generated
- * metadata is only persisted through the explicit save action.
+ * Publishing metadata (title + description + target platform) for a video,
+ * 1:1 with the video like stories. Generated metadata is only persisted
+ * through the explicit save action.
  */
 #[Fillable([
-    'project_id',
+    'video_id',
     'platform',
     'title',
     'description',
@@ -29,8 +29,8 @@ class VideoMetadata extends Model
         ];
     }
 
-    public function project(): BelongsTo
+    public function video(): BelongsTo
     {
-        return $this->belongsTo(Project::class);
+        return $this->belongsTo(Video::class);
     }
 }

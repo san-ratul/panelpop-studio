@@ -247,7 +247,12 @@ final class OpenAIPayloadValidator
                     throw self::invalid(sprintf('scene %d dialogue[%d].text is empty', $number, $lineIndex));
                 }
 
-                $dialogue[] = ['character_name' => $characterName, 'text' => $text];
+                $dialogue[] = [
+                    'character_name' => $characterName,
+                    'text' => $text,
+                    'emotion' => self::nullableStringField($line, 'emotion', 40),
+                    'voice_instructions' => self::nullableStringField($line, 'voice_instructions', 4096),
+                ];
             }
 
             $scenes[] = [
@@ -256,11 +261,63 @@ final class OpenAIPayloadValidator
                 'background_description' => $background,
                 'image_prompt' => $imagePrompt,
                 'narration_text' => self::nullableStringField($entry, 'narration_text', self::MAX_NARRATION),
+                'narration_voice_instructions' => self::nullableStringField($entry, 'narration_voice_instructions', 4096),
                 'dialogue' => $dialogue,
             ];
         }
 
         return $scenes;
+    }
+
+    /**
+     * Validates the shape of an AI voice-assignment payload. Speaker-name
+     * matching against the known characters happens in the application
+     * service (invalid names fall back per line instead of rejecting the
+     * whole batch).
+     *
+     * @param  array<string, mixed>  $payload
+     * @return list<array{line_id: int, speaker: ?string, emotion: ?string, voice_instructions: ?string}>
+     */
+    public static function dialogueVoiceAssignment(array $payload): array
+    {
+        $value = self::arrayField($payload, 'assignments', 'assignments');
+
+        if (count($value) > 500) {
+            throw self::invalid('"assignments" may contain at most 500 entries');
+        }
+
+        $assignments = [];
+
+        foreach ($value as $index => $entry) {
+            if (! is_array($entry)) {
+                throw self::invalid(sprintf('assignments[%d] must be an object', $index));
+            }
+
+            $lineId = $entry['line_id'] ?? null;
+
+            if (! is_int($lineId) && ! (is_string($lineId) && ctype_digit($lineId))) {
+                throw self::invalid(sprintf('assignments[%d].line_id must be an integer', $index));
+            }
+
+            $speaker = self::nullableStringField($entry, 'speaker', self::MAX_NAME);
+
+            if ($speaker !== null && mb_strtolower(trim($speaker)) === 'narrator') {
+                $speaker = null;
+            }
+
+            if ($speaker === '') {
+                throw self::invalid(sprintf('assignments[%d].speaker is empty (use "narrator" for narrator lines)', $index));
+            }
+
+            $assignments[] = [
+                'line_id' => (int) $lineId,
+                'speaker' => $speaker,
+                'emotion' => self::nullableStringField($entry, 'emotion', 40),
+                'voice_instructions' => self::nullableStringField($entry, 'voice_instructions', 4096),
+            ];
+        }
+
+        return $assignments;
     }
 
     /**

@@ -11,6 +11,8 @@ use App\AI\ProviderManager;
 use App\AI\ProviderRegistry;
 use App\AI\ProviderSettingsService;
 use App\Models\User;
+use App\Models\Video;
+use App\Services\ProjectStatusService;
 use App\Services\Render\ProcessRunner;
 use App\Services\Render\RenderSettings;
 use App\Services\Render\SymfonyProcessRunner;
@@ -60,5 +62,10 @@ class AppServiceProvider extends ServiceProvider
         // never allowed to see other users' usage or aggregate platform
         // costs (D-030). Nothing else in the app requires admin rights.
         Gate::define('admin', fn (User $user): bool => (bool) $user->is_admin);
+
+        // The project status is a derived aggregate of its videos' pipeline
+        // states — keep it in sync whenever any video row changes.
+        Video::saved(fn (Video $video) => app(ProjectStatusService::class)->syncForVideo($video));
+        Video::deleted(fn (Video $video) => app(ProjectStatusService::class)->syncForVideo($video));
     }
 }

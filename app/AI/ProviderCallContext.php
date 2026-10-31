@@ -11,5 +11,6 @@ final class ProviderCallContext
         public readonly ?int $generationJobId = null,
         public readonly ?int $userId = null,
         public readonly ?ProviderOperation $operation = null,
+        public readonly ?int $videoId = null,
     ) {}
 }

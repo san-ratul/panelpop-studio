@@ -22,6 +22,7 @@ use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\VoiceAudioPersister;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,6 +44,8 @@ class AudioGenerationTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -57,6 +60,7 @@ class AudioGenerationTest extends TestCase
             'status' => 'planned',
             'presentation_mode' => 'narrator',
         ]);
+        $this->video = $this->makeVideo($this->project);
 
         $this->actingAs($this->user);
     }
@@ -72,7 +76,7 @@ class AudioGenerationTest extends TestCase
 
     private function addScene(int $number, ?string $narration = 'The narrator sets the scene.'): Scene
     {
-        return Scene::factory()->for($this->project)->create([
+        return Scene::factory()->for($this->video)->create([
             'number' => $number,
             'narration_text' => $narration,
             'background_description' => 'A tidy workshop at night.',
@@ -95,7 +99,7 @@ class AudioGenerationTest extends TestCase
 
         $scene = $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $job = GenerationJob::query()->sole();
 
@@ -144,7 +148,7 @@ class AudioGenerationTest extends TestCase
         $scene = $this->addScene(1, null);
         $line = $this->addLine($scene, 'We are live!', $character);
 
-        $this->post(route('dialogue-lines.generate-voice', [$this->project, $scene, $line]))
+        $this->post(route('dialogue-lines.generate-voice', [$this->project, $this->video, $scene, $line]))
             ->assertRedirect();
 
         $line->refresh();
@@ -167,7 +171,7 @@ class AudioGenerationTest extends TestCase
         $scene = $this->addScene(1, 'The narrator sets the scene.');
         $this->addLine($scene, 'We are live!', $character);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(2, Asset::query()->count());
         $this->assertSame(2, ProviderCall::query()->count());
@@ -189,7 +193,7 @@ class AudioGenerationTest extends TestCase
         $scene = $this->addScene(1, 'The narrator sets the scene.');
         $this->addLine($scene, 'We are live!', $character);
 
-        $this->post(route('audio.generate', $this->project))
+        $this->post(route('audio.generate', [$this->project, $this->video]))
             ->assertRedirect()
             ->assertSessionHas('success');
 
@@ -206,7 +210,7 @@ class AudioGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'The narrator sets the scene.');
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(0, GenerationJob::query()->count());
         $this->assertSame(0, ProviderCall::query()->count());
@@ -219,13 +223,13 @@ class AudioGenerationTest extends TestCase
 
         $scene = $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(1, Asset::query()->count());
         $this->assertSame(1, ProviderCall::query()->count());
 
         // Second batch: everything is ready — no new jobs, no new calls.
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(1, Asset::query()->count());
         $this->assertSame(1, ProviderCall::query()->count());
@@ -238,12 +242,12 @@ class AudioGenerationTest extends TestCase
 
         $scene = $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $firstAssetId = Asset::query()->sole()->id;
 
         // Explicit per-scene regenerate is intended spend: replaced, not duplicated.
-        $this->post(route('scenes.generate-narration', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-narration', [$this->project, $this->video, $scene]))->assertRedirect();
 
         $this->assertSame(2, GenerationJob::query()->count());
         $this->assertSame(2, ProviderCall::query()->count());
@@ -264,8 +268,8 @@ class AudioGenerationTest extends TestCase
         // Identical text + voice config produce the same content-addressed
         // provider path, so the replace must keep the file the new row
         // points at (regression: regeneration used to delete it).
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
-        $this->post(route('scenes.generate-narration', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
+        $this->post(route('scenes.generate-narration', [$this->project, $this->video, $scene]))->assertRedirect();
 
         $asset = Asset::query()->sole();
 
@@ -284,7 +288,8 @@ class AudioGenerationTest extends TestCase
         // simulate the project mode changing while the job is still queued.
         $line->update(['status' => DialogueLineStatus::Generating]);
 
-        $job = $this->project->generationJobs()->create([
+        $job = $this->video->generationJobs()->create([
+            'project_id' => $this->project->id,
             'type' => GenerationJobType::VoiceGeneration,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -314,7 +319,8 @@ class AudioGenerationTest extends TestCase
         $line = $this->addLine($scene);
         $line->update(['status' => DialogueLineStatus::Generating]);
 
-        $job = $this->project->generationJobs()->create([
+        $job = $this->video->generationJobs()->create([
+            'project_id' => $this->project->id,
             'type' => GenerationJobType::VoiceGeneration,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -359,7 +365,8 @@ class AudioGenerationTest extends TestCase
         $line = $this->addLine($scene);
         $line->update(['status' => DialogueLineStatus::Generating]);
 
-        $job = $this->project->generationJobs()->create([
+        $job = $this->video->generationJobs()->create([
+            'project_id' => $this->project->id,
             'type' => GenerationJobType::VoiceGeneration,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -389,7 +396,8 @@ class AudioGenerationTest extends TestCase
 
         // A worker crash left a queued row behind; without the heal it would
         // block this subject and keep the UI polling forever.
-        $stale = $this->project->generationJobs()->create([
+        $stale = $this->video->generationJobs()->create([
+            'project_id' => $this->project->id,
             'type' => GenerationJobType::VoiceGeneration,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -400,7 +408,7 @@ class AudioGenerationTest extends TestCase
 
         $stale->forceFill(['updated_at' => now()->subHours(2)])->saveQuietly();
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(GenerationJobStatus::Cancelled, $stale->refresh()->status);
 
@@ -409,29 +417,41 @@ class AudioGenerationTest extends TestCase
         $this->assertSame(GenerationJobStatus::Succeeded, $fresh->status);
     }
 
-    public function test_narration_voice_config_persists_for_the_project(): void
+    public function test_narration_voice_config_persists_for_the_video(): void
     {
-        $this->patch(route('audio.narration-voice', $this->project), [
+        $this->patch(route('audio.narration-voice', [$this->project, $this->video]), [
             'voice' => 'coral',
             'instructions' => '  Speak like a warm bedtime storyteller.  ',
             'speed' => '1.15',
-        ])->assertRedirect(route('audio.show', $this->project));
+        ])->assertRedirect(route('audio.show', [$this->project, $this->video]));
 
-        $config = $this->project->refresh()->settings['narration_voice_config'];
+        $config = $this->video->refresh()->settings['narration_voice_config'];
 
         $this->assertSame('coral', $config['voice']);
         $this->assertSame('Speak like a warm bedtime storyteller.', $config['instructions']);
         $this->assertSame(1.15, $config['speed']);
+
+        // The audio page shows the effective narrator config and flags it as
+        // a video-level override (not inherited from the project default).
+        $this->get(route('audio.show', [$this->project, $this->video]))
+            ->assertOk()
+            ->assertInertia(
+                fn (InertiaAssert $page) => $page
+                    ->component('Audio/Show')
+                    ->where('narrationVoiceConfig.voice', 'coral')
+                    ->where('narrationVoiceConfig.speed', 1.15)
+                    ->where('narrationVoiceInherited', false)
+            );
     }
 
     public function test_narration_voice_config_validates_its_fields(): void
     {
-        $this->patch(route('audio.narration-voice', $this->project), [
+        $this->patch(route('audio.narration-voice', [$this->project, $this->video]), [
             'voice' => str_repeat('a', 121),
             'speed' => '9',
         ])->assertSessionHasErrors(['voice', 'speed']);
 
-        $this->assertNull($this->project->refresh()->settings['narration_voice_config'] ?? null);
+        $this->assertNull($this->video->refresh()->settings['narration_voice_config'] ?? null);
     }
 
     public function test_strangers_cannot_change_the_narration_voice(): void
@@ -439,10 +459,10 @@ class AudioGenerationTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->patch(route('audio.narration-voice', $this->project), ['voice' => 'coral'])
+            ->patch(route('audio.narration-voice', [$this->project, $this->video]), ['voice' => 'coral'])
             ->assertForbidden();
 
-        $this->assertNull($this->project->refresh()->settings['narration_voice_config'] ?? null);
+        $this->assertNull($this->video->refresh()->settings['narration_voice_config'] ?? null);
     }
 
     public function test_switching_to_hybrid_from_the_audio_page_voices_saved_dialogue_lines(): void
@@ -456,14 +476,14 @@ class AudioGenerationTest extends TestCase
         $scene = $this->addScene(1);
         $this->addLine($scene, 'Dance along with me!', $character);
 
-        $this->patch(route('audio.presentation-mode', $this->project), [
+        $this->patch(route('audio.presentation-mode', [$this->project, $this->video]), [
             'presentation_mode' => 'hybrid',
-        ])->assertRedirect(route('audio.show', $this->project))
+        ])->assertRedirect(route('audio.show', [$this->project, $this->video]))
             ->assertSessionHas('success');
 
-        $this->assertSame('hybrid', $this->project->refresh()->presentation_mode->value);
+        $this->assertSame('hybrid', $this->video->refresh()->presentation_mode_override->value);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(2, Asset::query()->count());
         $this->assertSame(2, ProviderCall::query()->count());
@@ -476,15 +496,16 @@ class AudioGenerationTest extends TestCase
 
     public function test_presentation_mode_switch_rejects_silent_modes(): void
     {
-        $this->patch(route('audio.presentation-mode', $this->project), [
+        $this->patch(route('audio.presentation-mode', [$this->project, $this->video]), [
             'presentation_mode' => 'silent',
         ])->assertSessionHasErrors(['presentation_mode']);
 
-        $this->patch(route('audio.presentation-mode', $this->project), [
+        $this->patch(route('audio.presentation-mode', [$this->project, $this->video]), [
             'presentation_mode' => 'not-a-mode',
         ])->assertSessionHasErrors(['presentation_mode']);
 
-        $this->assertSame('narrator', $this->project->refresh()->presentation_mode->value);
+        $this->assertNull($this->video->refresh()->presentation_mode_override);
+        $this->assertSame('narrator', $this->video->effectivePresentationMode()->value);
     }
 
     public function test_strangers_cannot_switch_the_presentation_mode(): void
@@ -492,12 +513,13 @@ class AudioGenerationTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->patch(route('audio.presentation-mode', $this->project), [
+            ->patch(route('audio.presentation-mode', [$this->project, $this->video]), [
                 'presentation_mode' => 'hybrid',
             ])
             ->assertForbidden();
 
-        $this->assertSame('narrator', $this->project->refresh()->presentation_mode->value);
+        $this->assertNull($this->video->refresh()->presentation_mode_override);
+        $this->assertSame('narrator', $this->video->effectivePresentationMode()->value);
     }
 
     public function test_invalid_fake_credentials_surface_the_auth_path_with_an_actionable_message(): void
@@ -509,7 +531,7 @@ class AudioGenerationTest extends TestCase
         $scene = $this->addScene(1);
 
         try {
-            $this->post(route('audio.generate', $this->project))->assertRedirect();
+            $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
         } catch (\Throwable) {
             // With the sync driver the provider failure re-throws after being
             // recorded; the ledger/job rows hold the actionable state either way.
@@ -537,9 +559,9 @@ class AudioGenerationTest extends TestCase
 
         $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
-        $this->get(route('audio.show', $this->project))
+        $this->get(route('audio.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -554,7 +576,7 @@ class AudioGenerationTest extends TestCase
 
     public function test_audio_page_offers_grouped_voices_and_style_presets(): void
     {
-        $this->get(route('audio.show', $this->project))
+        $this->get(route('audio.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -577,15 +599,15 @@ class AudioGenerationTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->post(route('audio.generate', $this->project))
+            ->post(route('audio.generate', [$this->project, $this->video]))
             ->assertForbidden();
 
         $this->actingAs($stranger)
-            ->post(route('scenes.generate-narration', [$this->project, $scene]))
+            ->post(route('scenes.generate-narration', [$this->project, $this->video, $scene]))
             ->assertForbidden();
 
         $this->actingAs($stranger)
-            ->post(route('dialogue-lines.generate-voice', [$this->project, $scene, $line]))
+            ->post(route('dialogue-lines.generate-voice', [$this->project, $this->video, $scene, $line]))
             ->assertForbidden();
 
         $this->assertSame(0, GenerationJob::query()->count());
@@ -598,7 +620,7 @@ class AudioGenerationTest extends TestCase
 
         $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $asset = Asset::query()->sole();
 

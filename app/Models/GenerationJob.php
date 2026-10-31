@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'project_id',
+    'video_id',
     'type',
     'status',
     'attempts',
@@ -50,8 +51,24 @@ class GenerationJob extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function video(): BelongsTo
+    {
+        return $this->belongsTo(Video::class);
+    }
+
     public function providerCalls(): HasMany
     {
         return $this->hasMany(ProviderCall::class);
+    }
+
+    protected static function booted(): void
+    {
+        // Video-scoped jobs derive their project from the video so writers
+        // only need one ownership reference.
+        static::creating(function (GenerationJob $job): void {
+            if ($job->project_id === null && $job->video_id !== null) {
+                $job->project_id = Video::query()->whereKey($job->video_id)->value('project_id');
+            }
+        });
     }
 }

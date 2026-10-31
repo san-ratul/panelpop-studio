@@ -17,6 +17,7 @@ use App\Enums\SceneStatus;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Services\ImageAssetPersister;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -62,9 +63,12 @@ final class GenerateSceneImageJob implements ShouldQueue
     {
         $job = GenerationJob::query()->find($this->generationJobId);
         $project = Project::query()->find($this->projectId);
-        $scene = $project?->scenes()->find($this->sceneId);
+        $scene = Scene::query()->find($this->sceneId);
+        $video = $scene?->video;
 
-        if ($job === null || $project === null || $scene === null || $job->type !== GenerationJobType::SceneImage) {
+        if ($job === null || $project === null || $scene === null || $video === null
+            || $job->type !== GenerationJobType::SceneImage
+            || ($job->video_id !== null && $job->video_id !== $video->id)) {
             return;
         }
 
@@ -92,7 +96,7 @@ final class GenerateSceneImageJob implements ShouldQueue
             return;
         }
 
-        $this->run($manager, $gateway, $persister, $job, $project, $scene);
+        $this->run($manager, $gateway, $persister, $job, $project, $video, $scene);
     }
 
     private function run(
@@ -101,6 +105,7 @@ final class GenerateSceneImageJob implements ShouldQueue
         ImageAssetPersister $persister,
         GenerationJob $job,
         Project $project,
+        Video $video,
         Scene $scene,
     ): void {
         $characters = $project->characters()->orderBy('name')->get();
@@ -167,7 +172,7 @@ final class GenerateSceneImageJob implements ShouldQueue
                 backgroundDescription: $scene->background_description,
                 durationSeconds: (float) $scene->duration_seconds,
                 characterNames: $required->pluck('name')->all(),
-                style: $project->visual_style,
+                style: $video->effectiveVisualStyle(),
             );
 
             $result = $gateway->call(
@@ -178,7 +183,7 @@ final class GenerateSceneImageJob implements ShouldQueue
                     'reference_count' => count($briefs),
                 ],
                 fn (): ImageResult => $resolved->imageAdapter()->generateSceneImage($sceneBrief, $briefs),
-                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::SceneImage),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::SceneImage, $video->id),
             );
 
             $asset = $persister->persistSceneImage($scene, $result, $job, $resolved->provider, $resolved->model);

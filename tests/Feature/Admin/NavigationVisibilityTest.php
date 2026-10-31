@@ -90,9 +90,10 @@ class NavigationVisibilityTest extends TestCase
     {
         $member = User::factory()->create();
         $project = Project::factory()->for($member)->create(['title' => 'Sidebar probe']);
+        $video = $this->makeVideo($project);
 
         $this->actingAs($member)
-            ->get(route('storyboard.show', $project))
+            ->get(route('storyboard.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(
                 fn ($page) => $page

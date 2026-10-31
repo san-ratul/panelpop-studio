@@ -9,12 +9,12 @@ use App\AI\ProviderManager;
 use App\AI\Results\VideoMetadata;
 use App\Enums\ProviderCapability;
 use App\Enums\ProviderOperation;
-use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 
 /**
  * Builds AI video metadata (title/description for YouTube Shorts / Facebook
- * Reels) from the project's own story, storyboard and render facts, through
+ * Reels) from the video's own story, storyboard and render facts, through
  * the standard provider pipeline (ProviderManager → ProviderGateway → text
  * adapter) so credential resolution, budget ceiling, ledger and retry apply.
  *
@@ -31,26 +31,28 @@ final class VideoMetadataService
         private readonly ProviderGateway $gateway,
     ) {}
 
-    public function generate(Project $project, string $platform): VideoMetadata
+    public function generate(Video $video, string $platform): VideoMetadata
     {
+        $project = $video->project;
+
         $resolved = $this->manager->resolve(ProviderCapability::Text, $project);
 
-        $story = $project->story;
-        $storyTitle = $story?->title ?? (string) $project->title;
+        $story = $video->story;
+        $storyTitle = $story?->title ?? (string) $video->title;
         $storyText = (string) ($story?->full_text ?? '');
 
-        $scenes = $project->scenes()->with('dialogueLines')->orderBy('number')->get();
+        $scenes = $video->scenes()->with('dialogueLines')->orderBy('number')->get();
 
         $brief = new VideoMetadataBrief(
             platform: $platform,
             storyTitle: $storyTitle,
             logline: $story?->logline,
             storyText: $storyText,
-            presentationMode: $project->presentation_mode->value,
-            visualStyle: (string) $project->visual_style,
-            language: (string) $project->language,
+            presentationMode: $video->effectivePresentationMode()->value,
+            visualStyle: $video->effectiveVisualStyle(),
+            language: $video->effectiveLanguage(),
             sceneCount: $scenes->count(),
-            targetDurationSeconds: (int) $project->target_duration_seconds,
+            targetDurationSeconds: (int) $video->target_duration_seconds,
             characterNames: $project->characters()->orderBy('name')->pluck('name')->all(),
             narrationExcerpt: $this->narrationExcerpt($scenes),
         );
@@ -64,7 +66,7 @@ final class VideoMetadataService
                 'title_chars' => (string) mb_strlen($storyTitle),
             ],
             fn (): VideoMetadata => $resolved->textAdapter()->generateVideoMetadata($brief),
-            new ProviderCallContext($project->id, null, $project->user_id, ProviderOperation::VideoMetadata),
+            new ProviderCallContext($project->id, null, $project->user_id, ProviderOperation::VideoMetadata, $video->id),
         );
     }
 

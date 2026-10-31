@@ -18,14 +18,15 @@ class DialogueLineTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
         $character = Character::factory()->for($project)->create();
 
-        $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $scene]), [
+        $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $video, $scene]), [
             'character_id' => $character->id,
             'text' => 'Beep boop, hello there!',
         ]);
-        $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $scene]), [
+        $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $video, $scene]), [
             'character_id' => null,
             'text' => 'The town woke up slowly.',
         ]);
@@ -40,10 +41,11 @@ class DialogueLineTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
         $foreignCharacter = Character::factory()->create();
 
-        $response = $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $scene]), [
+        $response = $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $video, $scene]), [
             'character_id' => $foreignCharacter->id,
             'text' => 'Crossing project boundaries!',
         ]);
@@ -56,8 +58,9 @@ class DialogueLineTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
+        $video = $this->makeVideo($project);
 
-        $response = $this->actingAs($user)->post(route('scenes.store', $project), [
+        $response = $this->actingAs($user)->post(route('scenes.store', [$project, $video]), [
             'duration_seconds' => 10,
             'background_description' => 'A park.',
             'image_prompt' => 'Cartoon park',
@@ -65,16 +68,16 @@ class DialogueLineTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors('speech_bubble_settings');
-        $this->assertSame(0, $project->scenes()->count());
+        $this->assertSame(0, $video->scenes()->count());
 
-        $this->actingAs($user)->post(route('scenes.store', $project), [
+        $this->actingAs($user)->post(route('scenes.store', [$project, $video]), [
             'duration_seconds' => 10,
             'background_description' => 'A park.',
             'image_prompt' => 'Cartoon park',
             'speech_bubble_settings' => ['position' => 'top', 'font_size' => 24],
         ]);
 
-        $scene = $project->scenes()->firstOrFail();
+        $scene = $video->scenes()->firstOrFail();
         $this->assertSame('top', $scene->speech_bubble_settings['position']);
         $this->assertSame(24, $scene->speech_bubble_settings['font_size']);
     }
@@ -83,23 +86,24 @@ class DialogueLineTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
         $line = DialogueLine::factory()->for($scene)->create(['sort_order' => 1]);
 
         $this->actingAs($user)
-            ->patch(route('dialogue-lines.update', [$project, $scene, $line]), [
+            ->patch(route('dialogue-lines.update', [$project, $video, $scene, $line]), [
                 'character_id' => null,
                 'text' => 'Updated line.',
                 'sort_order' => 5,
             ])
-            ->assertRedirect(route('storyboard.show', ['project' => $project->id]));
+            ->assertRedirect(route('storyboard.show', ['project' => $project->id, 'video' => $video->id]));
 
         $this->assertSame('Updated line.', $line->refresh()->text);
         $this->assertSame(5, $line->sort_order);
 
         $this->actingAs($user)
-            ->delete(route('dialogue-lines.destroy', [$project, $scene, $line]))
-            ->assertRedirect(route('storyboard.show', ['project' => $project->id]));
+            ->delete(route('dialogue-lines.destroy', [$project, $video, $scene, $line]))
+            ->assertRedirect(route('storyboard.show', ['project' => $project->id, 'video' => $video->id]));
 
         $this->assertSame(0, $scene->dialogueLines()->count());
     }
@@ -109,19 +113,20 @@ class DialogueLineTest extends TestCase
         $owner = User::factory()->create();
         $intruder = User::factory()->create();
         $project = Project::factory()->for($owner)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
         $line = DialogueLine::factory()->for($scene)->create();
 
         $this->actingAs($intruder)
-            ->post(route('dialogue-lines.store', [$project, $scene]), ['text' => 'Intruder line'])
+            ->post(route('dialogue-lines.store', [$project, $video, $scene]), ['text' => 'Intruder line'])
             ->assertForbidden();
 
         $this->actingAs($intruder)
-            ->patch(route('dialogue-lines.update', [$project, $scene, $line]), ['text' => 'Hijacked'])
+            ->patch(route('dialogue-lines.update', [$project, $video, $scene, $line]), ['text' => 'Hijacked'])
             ->assertForbidden();
 
         $this->actingAs($intruder)
-            ->delete(route('dialogue-lines.destroy', [$project, $scene, $line]))
+            ->delete(route('dialogue-lines.destroy', [$project, $video, $scene, $line]))
             ->assertForbidden();
 
         $this->assertNotSame('Hijacked', $line->refresh()->text);
@@ -131,9 +136,10 @@ class DialogueLineTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
 
-        $response = $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $scene]), [
+        $response = $this->actingAs($user)->post(route('dialogue-lines.store', [$project, $video, $scene]), [
             'text' => str_repeat('x', 5001),
         ]);
 

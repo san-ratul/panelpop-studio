@@ -107,6 +107,10 @@ final class StoryPromptBuilder
             ."- image_prompt must describe a {$visualStyle} cartoon illustration in vertical 9:16 composition, including character looks so images stay consistent.\n"
             ."- Every named character must appear in the characters array with a visual description.\n"
             ."- dialogue character_name values must exactly match a character name.\n"
+            ."- Assign every dialogue line a speaker who is clearly the one talking in that moment; use a character only when the story supports it. A line the narrator speaks must not be assigned to a character.\n"
+            ."- Give every dialogue line an `emotion` (one word, e.g. happy, sad, angry, scared, excited, whisper, calm, neutral) matching the line's content.\n"
+            ."- Give every dialogue line a short `voice_instructions` delivery note (tone, energy, pace) consistent with that emotion: happy lines sound cheerful and energetic, sad lines soft and emotional, angry lines firm and intense, whispers quiet and intimate, excited lines enthusiastic.\n"
+            ."- When a scene has narration, give `narration_voice_instructions` describing the narrator's delivery for that scene.\n"
             ."- Language: {$language}.\n"
             .$characterList;
 

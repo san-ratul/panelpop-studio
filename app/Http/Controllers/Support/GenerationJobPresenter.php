@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Support;
 use App\Enums\GenerationJobType;
 use App\Models\GenerationJob;
 use App\Models\Project;
+use App\Models\Video;
 
 /**
  * Serializes generation jobs for Inertia page props (no secrets; error
@@ -15,9 +16,28 @@ final class GenerationJobPresenter
     private const RECENT_LIMIT = 5;
 
     /**
+     * Video-scoped job history (story, planning, images, voice, render).
+     *
      * @return list<array<string, mixed>>
      */
-    public static function recent(Project $project, GenerationJobType $type): array
+    public static function recent(Video $video, GenerationJobType $type): array
+    {
+        return $video->generationJobs()
+            ->where('type', $type->value)
+            ->orderByDesc('id')
+            ->limit(self::RECENT_LIMIT)
+            ->get()
+            ->map(static fn (GenerationJob $job): array => self::present($job))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Project-scoped job history (character references, music).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function recentForProject(Project $project, GenerationJobType $type): array
     {
         return $project->generationJobs()
             ->where('type', $type->value)

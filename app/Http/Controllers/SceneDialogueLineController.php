@@ -6,12 +6,13 @@ use App\Http\Requests\DialogueLineRequest;
 use App\Models\DialogueLine;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 
 class SceneDialogueLineController extends Controller
 {
-    public function store(DialogueLineRequest $request, Project $project, Scene $scene): RedirectResponse
+    public function store(DialogueLineRequest $request, Project $project, Video $video, Scene $scene): RedirectResponse
     {
         $this->authorize('create', [DialogueLine::class, $scene]);
 
@@ -22,27 +23,27 @@ class SceneDialogueLineController extends Controller
             $scene->dialogueLines()->create($data);
         });
 
-        return redirect()->route('storyboard.show', ['project' => $project->id])
+        return redirect()->route('storyboard.show', ['project' => $project->id, 'video' => $video->id])
             ->with('success', 'Dialogue line added.');
     }
 
-    public function update(DialogueLineRequest $request, Project $project, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
+    public function update(DialogueLineRequest $request, Project $project, Video $video, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
     {
         $this->authorize('update', $dialogueLine);
 
         $dialogueLine->update($request->validated());
 
-        return redirect()->route('storyboard.show', ['project' => $project->id])
+        return redirect()->route('storyboard.show', ['project' => $project->id, 'video' => $video->id])
             ->with('success', 'Dialogue line updated.');
     }
 
-    public function destroy(Project $project, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
+    public function destroy(Project $project, Video $video, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
     {
         $this->authorize('delete', $dialogueLine);
 
         $dialogueLine->delete();
 
-        return redirect()->route('storyboard.show', ['project' => $project->id])
+        return redirect()->route('storyboard.show', ['project' => $project->id, 'video' => $video->id])
             ->with('success', 'Dialogue line deleted.');
     }
 
@@ -54,11 +55,13 @@ class SceneDialogueLineController extends Controller
             'character_name' => $line->character?->name,
             'text' => $line->text,
             'sort_order' => $line->sort_order,
+            'emotion' => $line->emotion,
+            'voice_instructions' => $line->voice_instructions,
             'status' => $line->status->value,
             'error_message' => $line->error_message,
             'has_audio' => $line->audio_asset_id !== null,
             'audio_url' => $line->audio_asset_id !== null
-                ? route('assets.show', ['project' => $line->scene->project_id, 'asset' => $line->audio_asset_id])
+                ? route('assets.show', ['project' => $line->scene->video->project_id, 'asset' => $line->audio_asset_id])
                 : null,
             'audio_duration_ms' => $line->audioAsset?->meta['duration_ms'] ?? null,
             'audio_exceeds_scene_duration' => $line->audioAsset?->meta['exceeds_scene_duration'] ?? false,

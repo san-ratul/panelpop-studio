@@ -12,12 +12,12 @@ class DashboardController extends Controller
     public function index(Request $request): Response
     {
         $projects = $request->user()->projects()
-            ->withCount('scenes')
+            ->withCount('videos')
             ->orderByDesc('updated_at')
             ->get()
             ->map(static fn (Project $project): array => [
                 ...ProjectController::present($project),
-                'scene_count' => $project->scenes_count,
+                'video_count' => $project->videos_count,
                 'updated_at' => $project->updated_at->toISOString(),
             ])
             ->values()

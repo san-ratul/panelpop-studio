@@ -6,7 +6,7 @@ use App\Enums\ProjectStatus;
 use App\Exceptions\RenderExecutionException;
 use App\Exceptions\RenderPreFlightException;
 use App\Models\GenerationJob;
-use App\Models\Project;
+use App\Models\Video;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -33,22 +33,22 @@ final class RenderOrchestrator
      * @param  callable(int): void|null  $report  progress 0-100
      * @return array<string, mixed> result payload for generation_jobs.result
      */
-    public function render(Project $project, GenerationJob $job, ?callable $report = null): array
+    public function render(Video $video, GenerationJob $job, ?callable $report = null): array
     {
         $report ??= static fn (): bool => true;
 
-        $plan = $this->planBuilder->build($project, null, $job->id);
+        $plan = $this->planBuilder->build($video, null, $job->id);
 
         $this->assertBubblesRenderable($plan);
 
         // Pre-flight passed — the heavy work begins.
-        $project->update(['status' => ProjectStatus::Rendering]);
+        $video->update(['status' => ProjectStatus::Rendering]);
 
         $report(5);
         $workDir = sprintf('%s/job-%d-%s', $this->settings->tempDir, $job->id, Str::ulid()->toBase32());
 
         try {
-            return $this->pipeline($plan, $project, $job, $workDir, $report);
+            return $this->pipeline($plan, $video, $job, $workDir, $report);
         } finally {
             $this->cleanupWorkDir($workDir);
         }
@@ -58,7 +58,7 @@ final class RenderOrchestrator
      * @param  callable(int): void  $report
      * @return array<string, mixed>
      */
-    private function pipeline(RenderPlan $plan, Project $project, GenerationJob $job, string $workDir, callable $report): array
+    private function pipeline(RenderPlan $plan, Video $video, GenerationJob $job, string $workDir, callable $report): array
     {
         $rendered = $this->renderer->render($plan, $workDir, function (string $stage, int $done, int $total) use ($report): void {
             if ($stage === 'segments' && $total > 0) {
@@ -93,7 +93,7 @@ final class RenderOrchestrator
         $report(85);
 
         if ($violations !== []) {
-            $this->quarantine($project, $finalPath);
+            $this->quarantine($video, $finalPath);
 
             throw new RenderExecutionException(
                 'The rendered video did not pass the output validation gate: '.$violations[0],
@@ -102,7 +102,7 @@ final class RenderOrchestrator
             );
         }
 
-        $thumbnailPath = $this->extractThumbnail($plan, $project, $workDir, $finalPath);
+        $thumbnailPath = $this->extractThumbnail($plan, $video, $workDir, $finalPath);
 
         $srt = (new SrtBuilder)->build($plan->scenes);
         $srtPath = null;
@@ -130,7 +130,7 @@ final class RenderOrchestrator
         [$thumbW, $thumbH] = $this->settings->thumbnailSize();
 
         $published = $this->publisher->publish(
-            $project,
+            $video,
             $job,
             $finalPath,
             $thumbnailPath,
@@ -188,10 +188,10 @@ final class RenderOrchestrator
         }
     }
 
-    private function extractThumbnail(RenderPlan $plan, Project $project, string $workDir, string $finalPath): string
+    private function extractThumbnail(RenderPlan $plan, Video $video, string $workDir, string $finalPath): string
     {
         $starts = RenderTimeline::sceneStarts($plan->scenes);
-        $chosen = $project->settings['thumbnail_scene_number'] ?? null;
+        $chosen = $video->settings['thumbnail_scene_number'] ?? $video->project->settings['thumbnail_scene_number'] ?? null;
         $index = null;
 
         if (is_int($chosen)) {
@@ -229,13 +229,13 @@ final class RenderOrchestrator
      * moved to a private quarantine area (no asset row is created) and can be
      * removed by the stale-render sweep.
      */
-    private function quarantine(Project $project, string $finalPath): void
+    private function quarantine(Video $video, string $finalPath): void
     {
         if (! is_file($finalPath)) {
             return;
         }
 
-        $diskPath = sprintf('renders/%d/quarantine/%s.mp4', $project->id, Str::ulid()->toBase32());
+        $diskPath = sprintf('renders/%d/quarantine/%s.mp4', $video->id, Str::ulid()->toBase32());
         $stream = @fopen($finalPath, 'rb');
 
         if ($stream === false) {

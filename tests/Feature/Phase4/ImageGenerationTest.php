@@ -23,6 +23,7 @@ use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\ImageAssetPersister;
 use App\Services\SceneImageDispatcher;
 use Database\Factories\ProviderSettingsFactory;
@@ -41,6 +42,8 @@ class ImageGenerationTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -56,6 +59,7 @@ class ImageGenerationTest extends TestCase
             'status' => 'planned',
             'visual_style' => 'simple_2d_cartoon',
         ]);
+        $this->video = $this->makeVideo($this->project, ['status' => 'planned']);
 
         $this->actingAs($this->user);
     }
@@ -71,7 +75,7 @@ class ImageGenerationTest extends TestCase
 
     private function addScene(int $number, string $imagePrompt = 'Simple 2D cartoon workshop at night.'): Scene
     {
-        return Scene::factory()->for($this->project)->create([
+        return Scene::factory()->for($this->video)->create([
             'number' => $number,
             'image_prompt' => $imagePrompt,
             'background_description' => 'A tidy workshop at night.',
@@ -140,7 +144,7 @@ class ImageGenerationTest extends TestCase
 
         $character->update(['reference_asset_id' => Asset::factory()->for($this->project)->create()->id]);
 
-        $this->post(route('scenes.generate-image', [$this->project, $scene]))
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))
             ->assertRedirect();
 
         $scene->refresh();
@@ -176,8 +180,8 @@ class ImageGenerationTest extends TestCase
         // Identical scene inputs produce the same content-addressed provider
         // path, so the replace must keep the file the new row points at
         // (regression: regeneration used to delete it).
-        $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
-        $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))->assertRedirect();
 
         $asset = $scene->fresh()->imageAsset;
 
@@ -195,6 +199,7 @@ class ImageGenerationTest extends TestCase
         $character->update(['reference_asset_id' => Asset::factory()->for($this->project)->create()->id]);
 
         $job = $this->project->generationJobs()->create([
+            'video_id' => $this->video->id,
             'type' => GenerationJobType::SceneImage,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -240,9 +245,9 @@ class ImageGenerationTest extends TestCase
         // The batch queues ONLY the reference job (the scene waits for it) —
         // the storyboard page must still report an active job so the UI keeps
         // polling while references render.
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
-        $this->get(route('storyboard.show', $this->project))
+        $this->get(route('storyboard.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertInertia(function (InertiaAssert $page): void {
                 $page->component('Storyboard/Show')
@@ -260,7 +265,7 @@ class ImageGenerationTest extends TestCase
         $character = $this->addCharacter('Robby the robot');
         $scene = $this->addScene(1, 'Robby the robot paints a glowing panel at night.');
 
-        $this->post(route('storyboard.generate-images', $this->project))
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))
             ->assertRedirect();
 
         // The scene depends on the character (named in its prompt) whose
@@ -298,7 +303,7 @@ class ImageGenerationTest extends TestCase
         $scene1 = $this->addScene(1, 'Robby the robot paints a glowing panel at night.');
         $scene2 = $this->addScene(2, 'The workshop at sunrise, no characters present.');
 
-        $this->post(route('storyboard.generate-images', $this->project))
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))
             ->assertRedirect();
 
         $character->refresh();
@@ -324,7 +329,7 @@ class ImageGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))
             ->assertRedirect();
 
         $scene->refresh();
@@ -341,7 +346,7 @@ class ImageGenerationTest extends TestCase
         $scene1 = $this->addScene(1, 'An empty street at night.');
         $scene2 = $this->addScene(2, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(2, ProviderCall::count());
 
@@ -349,7 +354,7 @@ class ImageGenerationTest extends TestCase
         $scene1OriginalAssetId = $scene1->fresh()->image_asset_id;
 
         // Explicit per-scene regenerate: ONLY scene 1 goes back to the provider.
-        $this->post(route('scenes.generate-image', [$this->project, $scene1]))->assertRedirect();
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene1]))->assertRedirect();
 
         $this->assertSame(3, ProviderCall::count());
 
@@ -372,12 +377,12 @@ class ImageGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(1, ProviderCall::count());
 
         // Second batch run: the scene is already ready — no new provider call.
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(1, ProviderCall::count());
         $this->assertSame(1, Asset::query()->count());
@@ -393,7 +398,7 @@ class ImageGenerationTest extends TestCase
         $scene1 = $this->addScene(1, 'An empty street at night.');
         $scene2 = $this->addScene(2, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $jobs = GenerationJob::query()->where('type', GenerationJobType::SceneImage->value)->orderBy('payload->scene_id')->get();
         $this->assertCount(2, $jobs);
@@ -482,6 +487,7 @@ class ImageGenerationTest extends TestCase
 
         // Direct job invocation with the reference still missing.
         $ledgerJob = GenerationJob::factory()->for($this->project)->create([
+            'video_id' => $this->video->id,
             'type' => GenerationJobType::SceneImage->value,
             'payload' => ['scene_id' => $scene->id, 'scene_number' => $scene->number, 'force' => false],
         ]);
@@ -508,7 +514,7 @@ class ImageGenerationTest extends TestCase
         // No provider configured at all (phpunit pins env empty).
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $scene->refresh();
 
@@ -530,15 +536,15 @@ class ImageGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('scenes.generate-image', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))->assertRedirect();
 
         $superseded = GenerationJob::query()->sole();
 
         // A second explicit request replaces the live job for the scene
         // instead of being blocked by it (dedupe stays for ready scenes,
         // not for explicit user intent).
-        $this->from(route('storyboard.show', $this->project))
-            ->post(route('scenes.generate-image', [$this->project, $scene]))
+        $this->from(route('storyboard.show', [$this->project, $this->video]))
+            ->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))
             ->assertRedirect()
             ->assertSessionHasNoErrors();
 
@@ -567,6 +573,7 @@ class ImageGenerationTest extends TestCase
         // It must not block regeneration until the stale sweep.
         $stuck = GenerationJob::query()->create([
             'project_id' => $this->project->id,
+            'video_id' => $this->video->id,
             'type' => GenerationJobType::SceneImage,
             'status' => GenerationJobStatus::Running,
             'attempts' => 1,
@@ -575,7 +582,7 @@ class ImageGenerationTest extends TestCase
             'payload' => ['scene_id' => $scene->id, 'scene_number' => $scene->number, 'force' => false],
         ]);
 
-        $this->post(route('scenes.generate-image', [$this->project, $scene]))
+        $this->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))
             ->assertRedirect()
             ->assertSessionHasNoErrors();
 
@@ -600,7 +607,7 @@ class ImageGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $asset = Asset::query()->sole();
 
@@ -642,11 +649,11 @@ class ImageGenerationTest extends TestCase
             ->assertForbidden();
 
         $this->actingAs($stranger)
-            ->post(route('scenes.generate-image', [$this->project, $scene]))
+            ->post(route('scenes.generate-image', [$this->project, $this->video, $scene]))
             ->assertForbidden();
 
         $this->actingAs($stranger)
-            ->post(route('storyboard.generate-images', $this->project))
+            ->post(route('storyboard.generate-images', [$this->project, $this->video]))
             ->assertForbidden();
 
         $this->assertSame(0, GenerationJob::query()->count());
@@ -659,12 +666,12 @@ class ImageGenerationTest extends TestCase
 
         $scene = $this->addScene(1, 'An empty street at dawn.');
 
-        $this->post(route('storyboard.generate-images', $this->project))->assertRedirect();
+        $this->post(route('storyboard.generate-images', [$this->project, $this->video]))->assertRedirect();
 
         $scene->refresh();
         $asset = $scene->imageAsset;
 
-        $this->get(route('storyboard.show', $this->project))
+        $this->get(route('storyboard.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page

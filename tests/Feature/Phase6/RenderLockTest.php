@@ -8,7 +8,6 @@ use App\Enums\ProjectStatus;
 use App\Jobs\RenderVideoJob;
 use App\Models\Asset;
 use App\Models\GenerationJob;
-use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -18,7 +17,7 @@ use Tests\Support\FakeProcessRunner;
 use Tests\TestCase;
 
 /**
- * Single-render lock per project and the stale-render sweep (PHASE_06):
+ * Single-render lock per video and the stale-render sweep (PHASE_06):
  * duplicate dispatch is prevented, worker-crash leftovers are recovered, and
  * orphaned temp/quarantine files are cleaned.
  */
@@ -67,16 +66,17 @@ class RenderLockTest extends TestCase
 
     public function test_a_queued_render_blocks_a_duplicate_launch(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
-        $project->generationJobs()->create([
+        $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
             'max_attempts' => 1,
         ]);
 
-        $response = $this->actingAs($this->user)->post(route('render.store', $project));
+        $response = $this->actingAs($this->user)->post(route('render.store', [$project, $video]));
 
         $response->assertSessionHasErrors('render');
         $this->assertSame(1, GenerationJob::query()->count());
@@ -84,9 +84,10 @@ class RenderLockTest extends TestCase
 
     public function test_a_running_render_blocks_a_duplicate_launch(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
-        $project->generationJobs()->create([
+        $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Running,
             'attempts' => 1,
@@ -94,7 +95,7 @@ class RenderLockTest extends TestCase
             'progress' => 40,
         ]);
 
-        $this->actingAs($this->user)->post(route('render.store', $project))
+        $this->actingAs($this->user)->post(route('render.store', [$project, $video]))
             ->assertSessionHasErrors('render');
 
         $this->assertSame(1, GenerationJob::query()->count());
@@ -102,7 +103,7 @@ class RenderLockTest extends TestCase
 
     public function test_the_render_job_declares_the_single_render_lock(): void
     {
-        $middleware = (new RenderVideoJob(1, 1))->middleware();
+        $middleware = (new RenderVideoJob(1, 1, 1))->middleware();
 
         $this->assertCount(1, $middleware);
         $this->assertInstanceOf(WithoutOverlapping::class, $middleware[0]);
@@ -110,10 +111,11 @@ class RenderLockTest extends TestCase
 
     public function test_the_sweep_cancels_stale_jobs_and_resolves_stuck_projects(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $project->update(['status' => 'rendering']);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $video->update(['status' => 'rendering']);
 
-        $job = $project->generationJobs()->create([
+        $job = $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Running,
             'attempts' => 1,
@@ -133,14 +135,16 @@ class RenderLockTest extends TestCase
 
     public function test_the_sweep_restores_a_completed_status_when_a_video_exists(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $project->update(['status' => 'rendering']);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $video->update(['status' => 'rendering']);
 
         $videoPath = 'renders/'.$project->id.'/completed.mp4';
         Storage::disk('media-private')->put($videoPath, 'mp4');
 
         Asset::query()->create([
             'project_id' => $project->id,
+            'video_id' => $video->id,
             'type' => 'video',
             'disk' => 'media-private',
             'path' => $videoPath,
@@ -148,7 +152,7 @@ class RenderLockTest extends TestCase
             'status' => 'ready',
         ]);
 
-        $job = $project->generationJobs()->create([
+        $job = $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Running,
             'attempts' => 1,
@@ -164,10 +168,11 @@ class RenderLockTest extends TestCase
 
     public function test_the_sweep_leaves_live_jobs_alone(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $project->update(['status' => 'rendering']);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $video->update(['status' => 'rendering']);
 
-        $project->generationJobs()->create([
+        $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Running,
             'attempts' => 1,
@@ -180,7 +185,7 @@ class RenderLockTest extends TestCase
         $project->refresh();
 
         $this->assertSame(ProjectStatus::Rendering, $project->status);
-        $this->assertSame(GenerationJobStatus::Running, $project->generationJobs()->first()->status);
+        $this->assertSame(GenerationJobStatus::Running, $video->generationJobs()->first()->status);
     }
 
     public function test_the_sweep_cleans_orphaned_temp_dirs_and_old_quarantine_files(): void
@@ -199,7 +204,8 @@ class RenderLockTest extends TestCase
         file_put_contents($fresh.'/final.mp4', 'in-use');
         touch($stale, now()->subDays(2)->getTimestamp());
 
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
         $disk = Storage::disk('media-private');
         $disk->put('renders/'.$project->id.'/quarantine/old.mp4', 'bad');

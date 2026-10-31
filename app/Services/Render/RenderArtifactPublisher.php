@@ -7,7 +7,7 @@ use App\Enums\AssetType;
 use App\Enums\ProjectStatus;
 use App\Models\Asset;
 use App\Models\GenerationJob;
-use App\Models\Project;
+use App\Models\Video;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -15,10 +15,10 @@ use Illuminate\Support\Str;
 /**
  * Publishes gated render artifacts to the private disk (VIDEO_RENDERING.md
  * step 13): final MP4, thumbnail and optional SRT become `assets` rows and
- * the project flips to completed. Replaces any previous render artifacts of
- * the project atomically — the previous video stays intact until the new one
+ * the video flips to completed. Replaces any previous render artifacts of
+ * THIS video atomically — the previous video stays intact until the new one
  * has passed the validation gate, so a failed re-render never destroys a
- * completed asset.
+ * completed asset. Sibling videos of the same project are untouched.
  */
 final class RenderArtifactPublisher
 {
@@ -29,7 +29,7 @@ final class RenderArtifactPublisher
      * @return array{video_asset_id: int, thumbnail_asset_id: int, subtitle_asset_id: ?int}
      */
     public function publish(
-        Project $project,
+        Video $video,
         GenerationJob $job,
         string $finalPath,
         string $thumbnailPath,
@@ -41,9 +41,9 @@ final class RenderArtifactPublisher
         $disk = (string) config('ai.artifact_disk');
         $storage = Storage::disk($disk);
 
-        $videoDiskPath = sprintf('renders/%d/%s.mp4', $project->id, Str::ulid());
-        $thumbnailDiskPath = sprintf('renders/%d/%s.png', $project->id, Str::ulid());
-        $srtDiskPath = $srtPath !== null ? sprintf('renders/%d/%s.srt', $project->id, Str::ulid()) : null;
+        $videoDiskPath = sprintf('renders/%d/%s.mp4', $video->project_id, Str::ulid());
+        $thumbnailDiskPath = sprintf('renders/%d/%s.png', $video->project_id, Str::ulid());
+        $srtDiskPath = $srtPath !== null ? sprintf('renders/%d/%s.srt', $video->project_id, Str::ulid()) : null;
 
         $this->storeLocalFile($storage, $videoDiskPath, $finalPath);
         $this->storeLocalFile($storage, $thumbnailDiskPath, $thumbnailPath);
@@ -52,18 +52,19 @@ final class RenderArtifactPublisher
             $this->storeLocalFile($storage, $srtDiskPath, $srtPath);
         }
 
-        $previous = $project->assets()
+        $previous = $video->assets()
             ->whereIn('type', [AssetType::Video->value, AssetType::Thumbnail->value, AssetType::Subtitle->value])
             ->get();
         $previousFiles = $previous->map(
             static fn (Asset $asset): array => ['disk' => $asset->disk, 'path' => $asset->path],
         )->all();
 
-        $ids = DB::transaction(function () use ($project, $job, $disk, $videoDiskPath, $thumbnailDiskPath, $srtDiskPath, $videoMeta, $thumbnailMeta, $subtitleMeta, $previous): array {
+        $ids = DB::transaction(function () use ($video, $job, $disk, $videoDiskPath, $thumbnailDiskPath, $srtDiskPath, $videoMeta, $thumbnailMeta, $subtitleMeta, $previous): array {
             Asset::query()->whereIn('id', $previous->pluck('id')->all())->delete();
 
-            $video = Asset::query()->create([
-                'project_id' => $project->id,
+            $publishedVideo = Asset::query()->create([
+                'project_id' => $video->project_id,
+                'video_id' => $video->id,
                 'type' => AssetType::Video,
                 'disk' => $disk,
                 'path' => $videoDiskPath,
@@ -78,7 +79,8 @@ final class RenderArtifactPublisher
             ]);
 
             $thumbnail = Asset::query()->create([
-                'project_id' => $project->id,
+                'project_id' => $video->project_id,
+                'video_id' => $video->id,
                 'type' => AssetType::Thumbnail,
                 'disk' => $disk,
                 'path' => $thumbnailDiskPath,
@@ -96,7 +98,8 @@ final class RenderArtifactPublisher
 
             if ($srtDiskPath !== null) {
                 $subtitle = Asset::query()->create([
-                    'project_id' => $project->id,
+                    'project_id' => $video->project_id,
+                    'video_id' => $video->id,
                     'type' => AssetType::Subtitle,
                     'disk' => $disk,
                     'path' => $srtDiskPath,
@@ -112,14 +115,14 @@ final class RenderArtifactPublisher
                 $subtitleId = $subtitle->id;
             }
 
-            foreach ($project->scenes()->get() as $scene) {
+            foreach ($video->scenes()->get() as $scene) {
                 $scene->update(['rendered_at' => now()]);
             }
 
-            $project->update(['status' => ProjectStatus::Completed]);
+            $video->update(['status' => ProjectStatus::Completed]);
 
             return [
-                'video_asset_id' => $video->id,
+                'video_asset_id' => $publishedVideo->id,
                 'thumbnail_asset_id' => $thumbnail->id,
                 'subtitle_asset_id' => $subtitleId,
             ];

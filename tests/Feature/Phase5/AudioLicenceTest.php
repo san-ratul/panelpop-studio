@@ -9,6 +9,7 @@ use App\Models\Asset;
 use App\Models\AudioLicence;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\AudioLicenceGate;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -27,6 +28,8 @@ class AudioLicenceTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     private User $user;
 
     protected function setUp(): void
@@ -37,6 +40,7 @@ class AudioLicenceTest extends TestCase
 
         $this->user = User::factory()->create();
         $this->project = Project::factory()->for($this->user)->create();
+        $this->video = $this->makeVideo($this->project);
 
         $this->actingAs($this->user);
     }
@@ -68,7 +72,7 @@ class AudioLicenceTest extends TestCase
     public function test_valid_audio_upload_creates_asset_and_unverified_licence(): void
     {
         $response = $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
         );
 
@@ -94,7 +98,7 @@ class AudioLicenceTest extends TestCase
     public function test_non_audio_upload_is_rejected(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => UploadedFile::fake()->createWithContent('notes.pdf', 'not audio')],
         )->assertSessionHasErrors('audio_file');
 
@@ -107,7 +111,7 @@ class AudioLicenceTest extends TestCase
         config(['audio.max_upload_mb' => 1]);
 
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => UploadedFile::fake()->create('huge.wav', 2048)],
         )->assertSessionHasErrors('audio_file');
 
@@ -117,7 +121,7 @@ class AudioLicenceTest extends TestCase
     public function test_corrupt_audio_content_is_quarantined_with_a_recorded_reason(): void
     {
         $response = $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => UploadedFile::fake()->createWithContent('broken.wav', 'not really audio bytes')],
         );
 
@@ -137,7 +141,7 @@ class AudioLicenceTest extends TestCase
     public function test_unverified_licence_blocks_and_verified_passes_render_preflight(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
@@ -148,7 +152,7 @@ class AudioLicenceTest extends TestCase
 
         // Evidence-gated verification flip.
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [...$this->uploadPayload(), 'licence_verified' => '1'],
         )->assertRedirect();
 
@@ -163,7 +167,7 @@ class AudioLicenceTest extends TestCase
     public function test_verified_licence_with_evidence_entries_persists_and_reads_back(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
@@ -175,7 +179,7 @@ class AudioLicenceTest extends TestCase
         ];
 
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [...$this->uploadPayload(), 'evidence' => $evidence, 'licence_verified' => '1'],
         )->assertRedirect();
 
@@ -186,7 +190,7 @@ class AudioLicenceTest extends TestCase
         $this->assertSame($evidence, $licence->evidence);
 
         // Read-back through the audio workspace payload (Inertia props).
-        $this->get(route('audio.show', $this->project))
+        $this->get(route('audio.show', [$this->project, $this->video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -201,14 +205,14 @@ class AudioLicenceTest extends TestCase
     public function test_verification_without_evidence_is_rejected(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
         $asset = Asset::query()->sole();
 
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [...$this->uploadPayload(), 'evidence' => [], 'licence_verified' => '1'],
         )->assertSessionHasErrors('licence_verified');
 
@@ -223,14 +227,14 @@ class AudioLicenceTest extends TestCase
         // single newline-separated string (the UI bug fixed alongside this
         // test) must not pass validation — evidence is an array of entries.
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
         $asset = Asset::query()->sole();
 
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [
                 ...$this->uploadPayload(),
                 'evidence' => "Quote: \"Commercial use permitted.\"\nhttps://example.com/licence",
@@ -246,14 +250,14 @@ class AudioLicenceTest extends TestCase
     public function test_whitespace_only_evidence_entries_do_not_satisfy_verification(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'evidence' => [], 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
         $asset = Asset::query()->sole();
 
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [...$this->uploadPayload(), 'evidence' => ['   ', ''], 'licence_verified' => '1'],
         )->assertSessionHasErrors('licence_verified');
 
@@ -265,14 +269,14 @@ class AudioLicenceTest extends TestCase
     public function test_verified_licence_missing_required_uses_cannot_be_recorded(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
         $asset = Asset::query()->sole();
 
         $this->patch(
-            route('audio-assets.update-licence', [$this->project, $asset]),
+            route('audio-assets.update-licence', [$this->project, $this->video, $asset]),
             [...$this->uploadPayload(), 'allowed_uses' => ['modification'], 'licence_verified' => '1'],
         )->assertSessionHasErrors('licence_verified');
 
@@ -286,7 +290,7 @@ class AudioLicenceTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->post(route('audio.upload', $this->project), [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()])
+            ->post(route('audio.upload', [$this->project, $this->video]), [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()])
             ->assertForbidden();
 
         $this->assertSame(0, Asset::query()->count());
@@ -295,7 +299,7 @@ class AudioLicenceTest extends TestCase
     public function test_owner_can_delete_an_uploaded_audio_asset_and_its_file(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
@@ -304,8 +308,8 @@ class AudioLicenceTest extends TestCase
 
         Storage::disk('media-private')->assertExists($path);
 
-        $this->delete(route('audio-assets.destroy', [$this->project, $asset]))
-            ->assertRedirect(route('audio.show', $this->project));
+        $this->delete(route('audio-assets.destroy', [$this->project, $this->video, $asset]))
+            ->assertRedirect(route('audio.show', [$this->project, $this->video]));
 
         $this->assertSame(0, Asset::query()->count());
         $this->assertSame(0, AudioLicence::query()->count());
@@ -319,7 +323,7 @@ class AudioLicenceTest extends TestCase
             'status' => AssetStatus::Ready,
         ]);
 
-        $this->delete(route('audio-assets.destroy', [$this->project, $sceneImage]))
+        $this->delete(route('audio-assets.destroy', [$this->project, $this->video, $sceneImage]))
             ->assertNotFound();
 
         $this->assertSame(1, Asset::query()->count());
@@ -328,7 +332,7 @@ class AudioLicenceTest extends TestCase
     public function test_strangers_cannot_delete_audio_assets(): void
     {
         $this->post(
-            route('audio.upload', $this->project),
+            route('audio.upload', [$this->project, $this->video]),
             [...$this->uploadPayload(), 'audio_file' => $this->validWavUpload()],
         )->assertRedirect();
 
@@ -336,7 +340,7 @@ class AudioLicenceTest extends TestCase
         $stranger = User::factory()->create();
 
         $this->actingAs($stranger)
-            ->delete(route('audio-assets.destroy', [$this->project, $asset]))
+            ->delete(route('audio-assets.destroy', [$this->project, $this->video, $asset]))
             ->assertForbidden();
 
         $this->assertSame(1, Asset::query()->count());

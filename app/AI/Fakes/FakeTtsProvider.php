@@ -44,4 +44,17 @@ final class FakeTtsProvider implements TtsProvider
             meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-audio'],
         );
     }
+
+    public function cachedArtifactPath(string $text, array $voiceConfig = []): ?string
+    {
+        $fingerprint = RequestFingerprint::generate('fake', self::MODEL, [
+            'text' => $text,
+            'voice_config' => $voiceConfig,
+        ]);
+
+        $path = sprintf('provider-fake/audio/%s.wav', $fingerprint);
+        $disk = (string) config('ai.artifact_disk');
+
+        return Storage::disk($disk)->exists($path) ? $path : null;
+    }
 }

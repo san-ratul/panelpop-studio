@@ -3,10 +3,13 @@
 namespace App\AI\Fakes;
 
 use App\AI\Contracts\TextProvider;
+use App\AI\Inputs\DialogueVoiceAssignmentBrief;
 use App\AI\Inputs\ScenePlanConstraints;
 use App\AI\Inputs\StoryBrief;
 use App\AI\Inputs\VideoMetadataBrief;
+use App\AI\Results\DialogueVoiceAssignments;
 use App\AI\Results\PlannedScene;
+use App\AI\Results\PlannedVoiceAssignment;
 use App\AI\Results\ProviderUsage;
 use App\AI\Results\ScenePlan;
 use App\AI\Results\StoryDraft;
@@ -66,9 +69,9 @@ final class FakeTextProvider implements TextProvider
         $perScene = round($constraints->targetDurationSeconds / $sceneCount, 2);
 
         $scenes = [
-            new PlannedScene(1, $perScene, 'A tidy workshop at night, moonlight through the window.', 'Cartoon workshop interior at night, moonlight, small robot painting panels, '.$constraints->targetDurationSeconds.' second pacing.', 'Every night, the little robot painted new cartoon panels.'),
-            new PlannedScene(2, $perScene, 'The workshop at sunrise, panels glowing on the wall.', 'Cartoon workshop at sunrise, cartoon panels coming to life, happy colors.', 'One morning, the painted panels began to glow.'),
-            new PlannedScene(3, $perScene, 'The workshop in daylight, robot and characters together.', 'Cartoon robot celebrating with painted cartoon characters, confetti.', 'The characters thanked him, and the robot smiled.'),
+            new PlannedScene(1, $perScene, 'A tidy workshop at night, moonlight through the window.', 'Cartoon workshop interior at night, moonlight, small robot painting panels, '.$constraints->targetDurationSeconds.' second pacing.', 'Every night, the little robot painted new cartoon panels.', [], 'Speak in a warm, calm narrator tone with a gentle bedtime-story pace.'),
+            new PlannedScene(2, $perScene, 'The workshop at sunrise, panels glowing on the wall.', 'Cartoon workshop at sunrise, cartoon panels coming to life, happy colors.', 'One morning, the painted panels began to glow.', [], 'Speak with rising wonder and light, building excitement.'),
+            new PlannedScene(3, $perScene, 'The workshop in daylight, robot and characters together.', 'Cartoon robot celebrating with painted cartoon characters, confetti.', 'The characters thanked him, and the robot smiled.', [], 'Speak in a happy, warm and satisfied tone.'),
         ];
 
         return new ScenePlan(
@@ -76,6 +79,46 @@ final class FakeTextProvider implements TextProvider
             usage: new ProviderUsage(inputTokens: 84, outputTokens: 640),
             costActual: 0.002345,
             meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-plan-1'],
+        );
+    }
+
+    public function assignDialogueVoices(DialogueVoiceAssignmentBrief $brief): DialogueVoiceAssignments
+    {
+        $this->scenario->throwIfFailure(ProviderCapability::Text);
+
+        $assignments = [];
+
+        foreach ($brief->lines as $line) {
+            $currentSpeaker = $line['current_speaker'] ?? null;
+            $knownNames = array_map(
+                static fn (array $character): string => (string) $character['name'],
+                $brief->characters,
+            );
+
+            // Deterministic policy: keep the current speaker when known,
+            // otherwise the first character; lines without any current
+            // speaker and without characters stay with the narrator.
+            $speaker = null;
+
+            if ($currentSpeaker !== null && in_array($currentSpeaker, $knownNames, true)) {
+                $speaker = $currentSpeaker;
+            } elseif ($knownNames !== []) {
+                $speaker = $knownNames[0];
+            }
+
+            $assignments[] = new PlannedVoiceAssignment(
+                lineId: (int) $line['id'],
+                speakerName: $speaker,
+                emotion: 'neutral',
+                voiceInstructions: 'Speak in a clear, friendly cartoon tone.',
+            );
+        }
+
+        return new DialogueVoiceAssignments(
+            assignments: $assignments,
+            usage: new ProviderUsage(inputTokens: 120, outputTokens: 260),
+            costActual: 0.000321,
+            meta: ['provider' => 'fake', 'model' => self::MODEL, 'id' => 'fake-voice-assignment-1'],
         );
     }
 }

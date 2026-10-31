@@ -9,8 +9,8 @@ use App\Enums\ProjectStatus;
 use App\Jobs\RenderVideoJob;
 use App\Models\Asset;
 use App\Models\GenerationJob;
-use App\Models\Project;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Render\BinaryProbe;
 use App\Services\Render\ProcessResult;
 use App\Services\Render\ProcessRunner;
@@ -83,9 +83,9 @@ class RenderIntegrationTest extends TestCase
         return $recording;
     }
 
-    private function makeJob(Project $project): GenerationJob
+    private function makeJob(Video $video): GenerationJob
     {
-        return $project->generationJobs()->create([
+        return $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -125,25 +125,26 @@ class RenderIntegrationTest extends TestCase
         $recording = $this->recordingRunner();
 
         // 2 scenes × 15 s = 30 s (minimum renderable envelope).
-        $project = $this->createRenderableProject($this->user, 'silent', [
+        $video = $this->createRenderableProject($this->user, 'silent', [
             1 => ['narration' => null],
             2 => ['narration' => null],
         ]);
+        $project = $video->project;
 
-        $job = $this->makeJob($project);
+        $job = $this->makeJob($video);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
         $this->assertSame(GenerationJobStatus::Succeeded, $job->status, (string) $job->error_message);
 
-        $video = Asset::query()->find($job->result['video_asset_id']);
+        $published = Asset::query()->find($job->result['video_asset_id']);
 
-        $this->assertSame(AssetType::Video, $video->type);
-        Storage::disk('media-private')->assertExists($video->path);
+        $this->assertSame(AssetType::Video, $published->type);
+        Storage::disk('media-private')->assertExists($published->path);
 
-        $probed = $this->probePublished($video->path);
+        $probed = $this->probePublished($published->path);
 
         $videoStream = collect($probed['streams'])->firstWhere('codec_type', 'video');
 
@@ -163,17 +164,19 @@ class RenderIntegrationTest extends TestCase
             }
         }
 
+        $this->assertSame(ProjectStatus::Completed, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Completed, $project->refresh()->status);
     }
 
     public function test_a_narrator_project_renders_an_aac_track_and_srt(): void
     {
         // 2 scenes × 15 s = 30 s; each with 4 s of narration audio.
-        $project = $this->createRenderableProject($this->user, 'narrator');
+        $video = $this->createRenderableProject($this->user, 'narrator');
+        $project = $video->project;
 
-        $job = $this->makeJob($project);
+        $job = $this->makeJob($video);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -181,8 +184,8 @@ class RenderIntegrationTest extends TestCase
         $this->assertSame('aac', $job->result['audio_codec']);
         $this->assertSame(2, $job->result['srt_cues']);
 
-        $video = Asset::query()->find($job->result['video_asset_id']);
-        $probed = $this->probePublished($video->path);
+        $published = Asset::query()->find($job->result['video_asset_id']);
+        $probed = $this->probePublished($published->path);
 
         $audioStream = collect($probed['streams'])->firstWhere('codec_type', 'audio');
 

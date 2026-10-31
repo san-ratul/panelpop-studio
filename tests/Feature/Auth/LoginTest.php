@@ -38,8 +38,8 @@ class LoginTest extends TestCase
 
                     return ($manifest['login'] ?? null) === 'login'
                         && ($manifest['dashboard'] ?? null) === 'dashboard'
-                        && ($manifest['story.edit'] ?? null) === 'projects/{project}/story/edit'
-                        && ($manifest['scenes.update'] ?? null) === 'projects/{project}/scenes/{scene}'
+                        && ($manifest['story.edit'] ?? null) === 'projects/{project}/videos/{video}/story/edit'
+                        && ($manifest['scenes.update'] ?? null) === 'projects/{project}/videos/{video}/scenes/{scene}'
                         && ($manifest['provider-settings.update'] ?? null) === 'settings/providers/{providerSetting}';
                 })
         );

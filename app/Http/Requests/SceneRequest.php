@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests;
 
-use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Rules\SpeechBubbleSettings;
 use App\Services\DurationValidator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,7 +18,7 @@ class SceneRequest extends FormRequest
 
     public function rules(): array
     {
-        $project = $this->route('project');
+        $video = $this->route('video');
         $scene = $this->route('scene');
         $isUpdate = $scene instanceof Scene;
 
@@ -28,7 +28,7 @@ class SceneRequest extends FormRequest
                 'integer',
                 'min:1',
                 Rule::unique(Scene::class)
-                    ->where('project_id', $project instanceof Project ? $project->id : 0)
+                    ->where('video_id', $video instanceof Video ? $video->id : 0)
                     ->ignore($scene),
             ],
             'duration_seconds' => ['required', 'numeric', 'min:'.DurationValidator::MIN_SCENE_SECONDS, 'max:'.DurationValidator::MAX_SCENE_SECONDS],
@@ -42,7 +42,7 @@ class SceneRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'number.unique' => 'Scene number :input is already used in this project.',
+            'number.unique' => 'Scene number :input is already used in this video.',
             'duration_seconds.min' => 'Scene duration must be at least 0.5 s.',
             'duration_seconds.max' => 'Scene duration may not exceed 120 s.',
         ];

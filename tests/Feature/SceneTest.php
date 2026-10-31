@@ -27,38 +27,41 @@ class SceneTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
+        $video = $this->makeVideo($project);
 
-        $this->actingAs($user)->post(route('scenes.store', $project), $this->validPayload());
-        $this->actingAs($user)->post(route('scenes.store', $project), $this->validPayload());
+        $this->actingAs($user)->post(route('scenes.store', [$project, $video]), $this->validPayload());
+        $this->actingAs($user)->post(route('scenes.store', [$project, $video]), $this->validPayload());
 
-        $this->assertSame([1, 2], $project->scenes()->orderBy('number')->pluck('number')->all());
+        $this->assertSame([1, 2], $video->scenes()->orderBy('number')->pluck('number')->all());
     }
 
     public function test_scene_number_must_be_unique_within_the_project(): void
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        Scene::factory()->for($video)->create(['number' => 1]);
 
-        $response = $this->actingAs($user)->post(route('scenes.store', $project), $this->validPayload([
+        $response = $this->actingAs($user)->post(route('scenes.store', [$project, $video]), $this->validPayload([
             'number' => 1,
         ]));
 
         $response->assertSessionHasErrors('number');
-        $this->assertSame(1, $project->scenes()->count());
+        $this->assertSame(1, $video->scenes()->count());
     }
 
     public function test_owner_can_edit_a_scene(): void
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1, 'duration_seconds' => 5]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1, 'duration_seconds' => 5]);
 
-        $response = $this->actingAs($user)->patch(route('scenes.update', [$project, $scene]), $this->validPayload([
+        $response = $this->actingAs($user)->patch(route('scenes.update', [$project, $video, $scene]), $this->validPayload([
             'duration_seconds' => 30.25,
         ]));
 
-        $response->assertRedirect(route('storyboard.show', $project));
+        $response->assertRedirect(route('storyboard.show', [$project, $video]));
         $this->assertSame('30.25', $scene->refresh()->duration_seconds);
     }
 
@@ -66,17 +69,18 @@ class SceneTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $sceneA = Scene::factory()->for($project)->create(['number' => 1]);
-        $sceneB = Scene::factory()->for($project)->create(['number' => 2]);
-        $sceneC = Scene::factory()->for($project)->create(['number' => 3]);
+        $video = $this->makeVideo($project);
+        $sceneA = Scene::factory()->for($video)->create(['number' => 1]);
+        $sceneB = Scene::factory()->for($video)->create(['number' => 2]);
+        $sceneC = Scene::factory()->for($video)->create(['number' => 3]);
 
-        $response = $this->actingAs($user)->post(route('scenes.reorder', $project), [
+        $response = $this->actingAs($user)->post(route('scenes.reorder', [$project, $video]), [
             'scene_ids' => [$sceneC->id, $sceneA->id, $sceneB->id],
         ]);
 
-        $response->assertRedirect(route('storyboard.show', $project));
+        $response->assertRedirect(route('storyboard.show', [$project, $video]));
 
-        $ordered = $project->scenes()->orderBy('number')->pluck('id')->all();
+        $ordered = $video->scenes()->orderBy('number')->pluck('id')->all();
         $this->assertSame([$sceneC->id, $sceneA->id, $sceneB->id], $ordered);
     }
 
@@ -84,31 +88,33 @@ class SceneTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $sceneA = Scene::factory()->for($project)->create(['number' => 1]);
-        $sceneB = Scene::factory()->for($project)->create(['number' => 2]);
+        $video = $this->makeVideo($project);
+        $sceneA = Scene::factory()->for($video)->create(['number' => 1]);
+        $sceneB = Scene::factory()->for($video)->create(['number' => 2]);
 
-        $response = $this->actingAs($user)->post(route('scenes.reorder', $project), [
+        $response = $this->actingAs($user)->post(route('scenes.reorder', [$project, $video]), [
             'scene_ids' => [$sceneA->id],
         ]);
 
         $response->assertSessionHasErrors('scene_ids');
-        $this->assertSame([$sceneA->id, $sceneB->id], $project->scenes()->orderBy('number')->pluck('id')->all());
+        $this->assertSame([$sceneA->id, $sceneB->id], $video->scenes()->orderBy('number')->pluck('id')->all());
     }
 
     public function test_owner_can_delete_a_scene_and_numbers_are_compacted(): void
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $sceneA = Scene::factory()->for($project)->create(['number' => 1]);
-        $sceneB = Scene::factory()->for($project)->create(['number' => 2]);
-        $sceneC = Scene::factory()->for($project)->create(['number' => 3]);
+        $video = $this->makeVideo($project);
+        $sceneA = Scene::factory()->for($video)->create(['number' => 1]);
+        $sceneB = Scene::factory()->for($video)->create(['number' => 2]);
+        $sceneC = Scene::factory()->for($video)->create(['number' => 3]);
 
-        $this->actingAs($user)->delete(route('scenes.destroy', [$project, $sceneA]));
+        $this->actingAs($user)->delete(route('scenes.destroy', [$project, $video, $sceneA]));
 
         $this->assertNull(Scene::find($sceneA->id));
         $this->assertSame(
             [$sceneB->id => 1, $sceneC->id => 2],
-            $project->scenes()->orderBy('number')->pluck('number', 'id')->all()
+            $video->scenes()->orderBy('number')->pluck('number', 'id')->all()
         );
     }
 
@@ -117,26 +123,28 @@ class SceneTest extends TestCase
         $owner = User::factory()->create();
         $intruder = User::factory()->create();
         $project = Project::factory()->for($owner)->create();
-        $scene = Scene::factory()->for($project)->create(['number' => 1]);
+        $video = $this->makeVideo($project);
+        $scene = Scene::factory()->for($video)->create(['number' => 1]);
 
-        $this->actingAs($intruder)->post(route('scenes.store', $project), $this->validPayload())->assertForbidden();
-        $this->actingAs($intruder)->patch(route('scenes.update', [$project, $scene]), $this->validPayload())->assertForbidden();
-        $this->actingAs($intruder)->delete(route('scenes.destroy', [$project, $scene]))->assertForbidden();
-        $this->actingAs($intruder)->post(route('scenes.reorder', $project), ['scene_ids' => [$scene->id]])->assertForbidden();
+        $this->actingAs($intruder)->post(route('scenes.store', [$project, $video]), $this->validPayload())->assertForbidden();
+        $this->actingAs($intruder)->patch(route('scenes.update', [$project, $video, $scene]), $this->validPayload())->assertForbidden();
+        $this->actingAs($intruder)->delete(route('scenes.destroy', [$project, $video, $scene]))->assertForbidden();
+        $this->actingAs($intruder)->post(route('scenes.reorder', [$project, $video]), ['scene_ids' => [$scene->id]])->assertForbidden();
 
-        $this->assertSame(1, $project->scenes()->count());
+        $this->assertSame(1, $video->scenes()->count());
     }
 
     public function test_scene_validation_rejects_out_of_range_duration(): void
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
+        $video = $this->makeVideo($project);
 
-        $response = $this->actingAs($user)->post(route('scenes.store', $project), $this->validPayload([
+        $response = $this->actingAs($user)->post(route('scenes.store', [$project, $video]), $this->validPayload([
             'duration_seconds' => 500,
         ]));
 
         $response->assertSessionHasErrors('duration_seconds');
-        $this->assertSame(0, $project->scenes()->count());
+        $this->assertSame(0, $video->scenes()->count());
     }
 }

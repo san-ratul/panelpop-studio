@@ -15,6 +15,7 @@ use App\Models\AudioLicence;
 use App\Models\DialogueLine;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Services\AudioLicenceGate;
 use App\Services\MusicUploadPersister;
 use App\Services\VoiceGenerationDispatcher;
@@ -27,11 +28,13 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Phase 5 audio workspace: TTS generation for narration + dialogue, music/SFX
- * uploads with licence records, and the render pre-flight gate view.
+ * Per-video audio workspace: TTS generation for narration + dialogue, the
+ * project-level music/SFX library with licence records, and the render
+ * pre-flight gate view.
  *
- * Every access passes through project-scoped policies (SECURITY.md); audio
- * streaming flows exclusively through the policy-checked assets.show route.
+ * Every access passes through video/project-scoped policies (SECURITY.md);
+ * audio streaming flows exclusively through the policy-checked assets.show
+ * route.
  */
 class ProjectAudioController extends Controller
 {
@@ -41,11 +44,11 @@ class ProjectAudioController extends Controller
         private readonly AudioLicenceGate $licenceGate,
     ) {}
 
-    public function show(Project $project): Response
+    public function show(Project $project, Video $video): Response
     {
-        $this->authorize('view', $project);
+        $this->authorize('view', $video);
 
-        $scenes = $project->scenes()->with('dialogueLines.character', 'narrationAudioAsset')->get()
+        $scenes = $video->scenes()->with(['video', 'dialogueLines.character', 'narrationAudioAsset'])->get()
             ->map(static fn ($scene) => SceneController::present($scene))
             ->values()
             ->all();
@@ -64,7 +67,7 @@ class ProjectAudioController extends Controller
             ->values()
             ->all();
 
-        $voiceJobs = GenerationJobPresenter::recent($project, GenerationJobType::VoiceGeneration);
+        $voiceJobs = GenerationJobPresenter::recent($video, GenerationJobType::VoiceGeneration);
 
         $blocked = $this->licenceGate->blockedAssets($project)
             ->map(static fn (array $entry): array => [
@@ -74,28 +77,35 @@ class ProjectAudioController extends Controller
             ->values()
             ->all();
 
+        $presentationMode = $video->effectivePresentationMode();
+
         return Inertia::render('Audio/Show', [
             'project' => ProjectController::present($project),
+            'video' => VideoController::present($video),
             'scenes' => $scenes,
             'characters' => $characters,
             'musicAssets' => $musicAssets,
             'voiceJobs' => $voiceJobs,
             'voiceJobActive' => GenerationJobPresenter::hasActive($voiceJobs),
             'blockedAssets' => $blocked,
-            'narrationEnabled' => VoiceGenerationDispatcher::modeAllowsNarration($project->presentation_mode),
-            'dialogueEnabled' => VoiceGenerationDispatcher::modeAllowsDialogue($project->presentation_mode),
-            'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($project->presentation_mode),
-            'narrationVoiceConfig' => $project->settings['narration_voice_config'] ?? null,
+            'narrationEnabled' => VoiceGenerationDispatcher::modeAllowsNarration($presentationMode),
+            'dialogueEnabled' => VoiceGenerationDispatcher::modeAllowsDialogue($presentationMode),
+            'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($presentationMode),
+            'narrationVoiceConfig' => $video->settings['narration_voice_config']
+                ?? $project->settings['narration_voice_config']
+                ?? null,
+            'narrationVoiceInherited' => ! isset($video->settings['narration_voice_config'])
+                && isset($project->settings['narration_voice_config']),
             'voiceGroups' => VoiceCatalog::voiceGroups(),
             'stylePresets' => VoiceCatalog::stylePresets(),
             'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
-            'hasReadyStory' => ($project->story?->status ?? null) === StoryStatus::Ready,
+            'hasReadyStory' => ($video->story?->status ?? null) === StoryStatus::Ready,
         ]);
     }
 
-    public function storeUpload(AudioUploadRequest $request, Project $project): RedirectResponse
+    public function storeUpload(AudioUploadRequest $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
         $data = $request->validated();
         $type = $data['type'] === 'sfx' ? AssetType::Sfx : AssetType::Music;
@@ -112,18 +122,18 @@ class ProjectAudioController extends Controller
         ]);
 
         if ($asset->status->value === 'failed') {
-            return redirect()->route('audio.show', $project)
+            return redirect()->route('audio.show', [$project, $video])
                 ->with('warning', sprintf(
                     'Uploaded "%s" was quarantined: it failed the server-side audio inspection. Check the audio page for the recorded reason.',
                     (string) $asset->original_filename,
                 ));
         }
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', sprintf('Uploaded "%s" and recorded its licence (unverified — see the render gate panel).', (string) $asset->original_filename));
     }
 
-    public function updateLicence(AudioLicenceRequest $request, Project $project, Asset $asset): RedirectResponse
+    public function updateLicence(AudioLicenceRequest $request, Project $project, Video $video, Asset $asset): RedirectResponse
     {
         $this->authorize('update', $asset);
 
@@ -154,13 +164,13 @@ class ProjectAudioController extends Controller
         $licence->asset()->associate($asset);
         $licence->save();
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', $verified
                 ? sprintf('Licence for "%s" marked verified (evidence recorded).', (string) ($asset->original_filename ?? $asset->path))
                 : sprintf('Licence for "%s" saved as not verified.', (string) ($asset->original_filename ?? $asset->path)));
     }
 
-    public function destroyAsset(Project $project, Asset $asset): RedirectResponse
+    public function destroyAsset(Project $project, Video $video, Asset $asset): RedirectResponse
     {
         $this->authorize('delete', $asset);
 
@@ -170,25 +180,25 @@ class ProjectAudioController extends Controller
 
         $asset->delete();
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', 'Audio asset and licence record deleted.');
     }
 
-    public function generateVoice(Project $project): RedirectResponse
+    public function generateVoice(Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
-        if ($project->scenes()->doesntExist()) {
+        if ($video->scenes()->doesntExist()) {
             throw ValidationException::withMessages([
                 'voice' => 'No scenes to voice. Generate or add a scene plan first.',
             ]);
         }
 
-        $summary = $this->voiceDispatcher->dispatchForProject($project);
+        $summary = $this->voiceDispatcher->dispatchForVideo($video);
 
         if ($summary['silent']) {
-            return redirect()->route('audio.show', $project)
-                ->with('success', 'This project mode is silent — no voice or music generation is used, and no audio provider is called.');
+            return redirect()->route('audio.show', [$project, $video])
+                ->with('success', 'This video mode is silent — no voice or music generation is used, and no audio provider is called.');
         }
 
         $parts = [];
@@ -202,55 +212,63 @@ class ProjectAudioController extends Controller
         }
 
         if ($summary['queued'] === 0) {
-            return redirect()->route('audio.show', $project)
+            return redirect()->route('audio.show', [$project, $video])
                 ->with('success', 'All narration and dialogue audio for this mode is already up to date.');
         }
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', 'Queued '.implode(' and ', $parts).'.');
     }
 
-    public function updateNarrationVoice(Request $request, Project $project): RedirectResponse
+    public function updateNarrationVoice(Request $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
         $data = $request->validate([
             'voice' => ['nullable', 'string', 'max:120'],
             'instructions' => ['nullable', 'string', 'max:4096'],
             'speed' => ['nullable', 'numeric', 'min:0.25', 'max:4.0'],
+            'inherit' => ['nullable', 'boolean'],
         ]);
 
-        $config = [];
+        $settings = is_array($video->settings) ? $video->settings : [];
 
-        if (is_string($data['voice'] ?? null) && trim($data['voice']) !== '') {
-            $config['voice'] = trim($data['voice']);
+        if ($request->boolean('inherit')) {
+            // Reset to the project default: remove the video-level override
+            // entirely (other videos are untouched).
+            unset($settings['narration_voice_config']);
+        } else {
+            $config = [];
+
+            if (is_string($data['voice'] ?? null) && trim($data['voice']) !== '') {
+                $config['voice'] = trim($data['voice']);
+            }
+
+            if (is_string($data['instructions'] ?? null) && trim($data['instructions']) !== '') {
+                $config['instructions'] = trim($data['instructions']);
+            }
+
+            if (isset($data['speed']) && is_numeric($data['speed'])) {
+                $config['speed'] = (float) $data['speed'];
+            }
+
+            $settings['narration_voice_config'] = $config;
         }
 
-        if (is_string($data['instructions'] ?? null) && trim($data['instructions']) !== '') {
-            $config['instructions'] = trim($data['instructions']);
-        }
+        $video->update(['settings' => $settings]);
 
-        if (isset($data['speed']) && is_numeric($data['speed'])) {
-            $config['speed'] = (float) $data['speed'];
-        }
-
-        $settings = is_array($project->settings) ? $project->settings : [];
-        $settings['narration_voice_config'] = $config;
-
-        $project->update(['settings' => $settings]);
-
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', 'Narration voice saved.');
     }
 
-    public function updatePresentationMode(Request $request, Project $project): RedirectResponse
+    public function updatePresentationMode(Request $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('update', $project);
+        $this->authorize('update', $video);
 
         $data = $request->validate([
             // Silent modes are intentionally excluded: the audio workspace
             // exists to produce voice audio, so switching to silent happens
-            // through project settings, not from this page.
+            // through the video settings, not from this page.
             'presentation_mode' => [
                 'required',
                 new Enum(PresentationMode::class),
@@ -264,43 +282,43 @@ class ProjectAudioController extends Controller
 
         $mode = PresentationMode::from($data['presentation_mode']);
 
-        $project->update(['presentation_mode' => $mode]);
+        $video->update(['presentation_mode_override' => $mode]);
 
-        return redirect()->route('audio.show', $project)
-            ->with('success', sprintf('Presentation mode switched to %s. Run "Generate missing voice audio" to voice everything this mode requires.', $mode->label()));
+        return redirect()->route('audio.show', [$project, $video])
+            ->with('success', sprintf('Presentation mode switched to %s for this video. Run "Generate missing voice audio" to voice everything this mode requires.', $mode->label()));
     }
 
-    public function generateNarration(Project $project, Scene $scene): RedirectResponse
+    public function generateNarration(Project $project, Video $video, Scene $scene): RedirectResponse
     {
         $this->authorize('update', $scene);
 
         $force = $scene->narration_audio_asset_id !== null;
 
-        $queued = $this->voiceDispatcher->dispatchNarration($project, $scene, $force);
+        $queued = $this->voiceDispatcher->dispatchNarration($video, $scene, $force);
 
         if (! $queued) {
-            return redirect()->route('audio.show', $project)
+            return redirect()->route('audio.show', [$project, $video])
                 ->with('success', sprintf('Scene %d narration did not need a new voice job (mode or text not eligible).', $scene->number));
         }
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', sprintf('Narration voice generation queued for scene %d.', $scene->number));
     }
 
-    public function generateLineVoice(Project $project, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
+    public function generateLineVoice(Project $project, Video $video, Scene $scene, DialogueLine $dialogueLine): RedirectResponse
     {
         $this->authorize('update', $dialogueLine);
 
         $force = $dialogueLine->status->value === 'ready' && $dialogueLine->audio_asset_id !== null;
 
-        $queued = $this->voiceDispatcher->dispatchDialogueLine($project, $dialogueLine, $force);
+        $queued = $this->voiceDispatcher->dispatchDialogueLine($video, $dialogueLine, $force);
 
         if (! $queued) {
-            return redirect()->route('audio.show', $project)
+            return redirect()->route('audio.show', [$project, $video])
                 ->with('success', 'This dialogue line did not need a new voice job (mode not eligible or audio already ready).');
         }
 
-        return redirect()->route('audio.show', $project)
+        return redirect()->route('audio.show', [$project, $video])
             ->with('success', 'Dialogue voice generation queued.');
     }
 

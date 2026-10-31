@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Story;
 use App\Models\User;
+use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as InertiaAssert;
 use Tests\TestCase;
@@ -41,7 +42,7 @@ class ProjectTest extends TestCase
         $this->assertSame(ProjectStatus::Draft, $project->status);
         $this->assertSame(60, $project->target_duration_seconds);
 
-        $response->assertRedirect(route('story.edit', $project));
+        $response->assertRedirect(route('videos.index', $project));
     }
 
     public function test_operation_feedback_is_shared_with_the_frontend(): void
@@ -50,7 +51,7 @@ class ProjectTest extends TestCase
 
         // Regression: controllers flash success/warning feedback, but the
         // Inertia middleware must share it as page props for AppLayout to
-        // render the banners.
+        // render the banners. Project creation lands on the video workspace.
         $this->actingAs($user)
             ->post('/projects', $this->validPayload())
             ->assertRedirect();
@@ -58,10 +59,10 @@ class ProjectTest extends TestCase
         $project = Project::query()->where('user_id', $user->id)->firstOrFail();
 
         $this->followingRedirects()
-            ->get(route('story.edit', $project))
+            ->get(route('videos.index', $project))
             ->assertInertia(function (InertiaAssert $page): void {
-                $page->component('Story/Edit')
-                    ->where('flashSuccess', 'Project created. Add your story next.')
+                $page->component('Videos/Index')
+                    ->where('flashSuccess', 'Project created. Create your first video next.')
                     ->where('flashWarning', null);
             });
     }
@@ -148,14 +149,16 @@ class ProjectTest extends TestCase
     {
         $user = User::factory()->create();
         $project = Project::factory()->for($user)->create();
-        $story = Story::factory()->for($project)->create();
-        $scene = Scene::factory()->for($project)->create();
+        $video = $this->makeVideo($project);
+        Story::factory()->for($video)->create();
+        Scene::factory()->for($video)->create();
         Character::factory()->for($project)->create();
 
         $response = $this->actingAs($user)->delete(route('projects.destroy', $project));
 
         $response->assertRedirect(route('dashboard'));
         $this->assertSame(0, Project::count());
+        $this->assertSame(0, Video::count());
         $this->assertSame(0, Story::count());
         $this->assertSame(0, Scene::count());
         $this->assertSame(0, Character::count());
@@ -185,8 +188,8 @@ class ProjectTest extends TestCase
     public function test_dashboard_lists_project_cards_with_status(): void
     {
         $user = User::factory()->create();
-        $project = Project::factory()->for($user)->create(['status' => 'story_ready']);
-        Scene::factory()->count(3)->for($project)->sequence(fn ($sequence) => ['number' => $sequence->index + 1])->create();
+        $project = Project::factory()->for($user)->create();
+        $this->makeVideo($project, ['status' => 'story_ready']);
 
         $response = $this->actingAs($user)->get(route('dashboard'));
 
@@ -195,7 +198,7 @@ class ProjectTest extends TestCase
             fn ($page) => $page->component('Dashboard')
                 ->where('projects.0.id', $project->id)
                 ->where('projects.0.status', 'story_ready')
-                ->where('projects.0.scene_count', 3)
+                ->where('projects.0.video_count', 1)
         );
     }
 }

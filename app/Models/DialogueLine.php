@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'scene_id',
     'character_id',
     'text',
+    'emotion',
+    'voice_instructions',
     'sort_order',
     'audio_asset_id',
     'status',

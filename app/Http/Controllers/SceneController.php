@@ -9,6 +9,7 @@ use App\Http\Requests\SceneRequest;
 use App\Models\DialogueLine;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Services\GenerationJobGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -19,68 +20,68 @@ class SceneController extends Controller
         private readonly GenerationJobGuard $jobGuard,
     ) {}
 
-    public function store(SceneRequest $request, Project $project): RedirectResponse
+    public function store(SceneRequest $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('create', [Scene::class, $project]);
+        $this->authorize('create', [Scene::class, $video]);
 
         $data = $request->validated();
-        $data['story_id'] = $project->story?->id;
+        $data['story_id'] = $video->story?->id;
 
-        DB::transaction(function () use ($project, &$data): void {
-            $data['number'] ??= (int) $project->scenes()->lockForUpdate()->max('number') + 1;
-            $project->scenes()->create($data);
+        DB::transaction(function () use ($video, &$data): void {
+            $data['number'] ??= (int) $video->scenes()->lockForUpdate()->max('number') + 1;
+            $video->scenes()->create($data);
         });
 
-        return redirect()->route('storyboard.show', $project)
+        return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', 'Scene added.');
     }
 
-    public function update(SceneRequest $request, Project $project, Scene $scene): RedirectResponse
+    public function update(SceneRequest $request, Project $project, Video $video, Scene $scene): RedirectResponse
     {
         $this->authorize('update', $scene);
 
         $scene->update($request->validated());
 
-        return redirect()->route('storyboard.show', $project)
+        return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', 'Scene updated.');
     }
 
-    public function destroy(Project $project, Scene $scene): RedirectResponse
+    public function destroy(Project $project, Video $video, Scene $scene): RedirectResponse
     {
         $this->authorize('delete', $scene);
 
-        DB::transaction(function () use ($project, $scene): void {
+        DB::transaction(function () use ($video, $scene): void {
             $scene->delete();
-            self::renumber($project->scenes()->orderBy('number')->pluck('id')->all());
+            self::renumber($video->scenes()->orderBy('number')->pluck('id')->all());
         });
 
-        return redirect()->route('storyboard.show', $project)
+        return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', 'Scene deleted.');
     }
 
-    public function reorder(ReorderScenesRequest $request, Project $project): RedirectResponse
+    public function reorder(ReorderScenesRequest $request, Project $project, Video $video): RedirectResponse
     {
-        $this->authorize('view', $project);
+        $this->authorize('view', $video);
 
         $sceneIds = $request->validated('scene_ids');
-        $projectSceneIds = $project->scenes()->pluck('id')->all();
+        $videoSceneIds = $video->scenes()->pluck('id')->all();
 
         sort($sceneIds);
-        $sortedProjectSceneIds = $projectSceneIds;
-        sort($sortedProjectSceneIds);
+        $sortedVideoSceneIds = $videoSceneIds;
+        sort($sortedVideoSceneIds);
 
-        if ($sceneIds !== $sortedProjectSceneIds) {
-            return redirect()->route('storyboard.show', $project)
-                ->withErrors(['scene_ids' => 'The scene order must contain every scene of this project exactly once.']);
+        if ($sceneIds !== $sortedVideoSceneIds) {
+            return redirect()->route('storyboard.show', [$project, $video])
+                ->withErrors(['scene_ids' => 'The scene order must contain every scene of this video exactly once.']);
         }
 
         DB::transaction(fn () => self::renumber($request->input('scene_ids')));
 
-        return redirect()->route('storyboard.show', $project)
+        return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', 'Scenes reordered.');
     }
 
-    public function generateImage(Project $project, Scene $scene): RedirectResponse
+    public function generateImage(Project $project, Video $video, Scene $scene): RedirectResponse
     {
         $this->authorize('update', $scene);
 
@@ -105,14 +106,14 @@ class SceneController extends Controller
             'scene_id' => $scene->id,
             'scene_number' => $scene->number,
             'force' => $force,
-        ]);
+        ], $video);
 
-        return redirect()->route('storyboard.show', $project)
+        return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', sprintf('Image generation queued for scene %d.', $scene->number));
     }
 
     /**
-     * Two-phase renumber (offset, then final) to respect the (project_id, number) unique index.
+     * Two-phase renumber (offset, then final) to respect the (video_id, number) unique index.
      *
      * @param  list<int>  $orderedSceneIds
      */
@@ -138,16 +139,17 @@ class SceneController extends Controller
             'background_description' => $scene->background_description,
             'image_prompt' => $scene->image_prompt,
             'narration_text' => $scene->narration_text,
+            'narration_voice_instructions' => $scene->narration_voice_instructions,
             'speech_bubble_settings' => $scene->speech_bubble_settings,
             'status' => $scene->status->value,
             'error_message' => $scene->error_message,
             'has_image' => $scene->image_asset_id !== null,
             'image_url' => $scene->image_asset_id !== null
-                ? route('assets.show', ['project' => $scene->project_id, 'asset' => $scene->image_asset_id])
+                ? route('assets.show', ['project' => $scene->video->project_id, 'asset' => $scene->image_asset_id])
                 : null,
             'has_narration_audio' => $scene->narration_audio_asset_id !== null,
             'narration_audio_url' => $scene->narration_audio_asset_id !== null
-                ? route('assets.show', ['project' => $scene->project_id, 'asset' => $scene->narration_audio_asset_id])
+                ? route('assets.show', ['project' => $scene->video->project_id, 'asset' => $scene->narration_audio_asset_id])
                 : null,
             'narration_duration_ms' => is_array($narrationMeta) ? ($narrationMeta['duration_ms'] ?? null) : null,
             'narration_exceeds_scene_duration' => is_array($narrationMeta) ? ($narrationMeta['exceeds_scene_duration'] ?? false) : false,

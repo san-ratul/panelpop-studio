@@ -15,6 +15,7 @@ final class ProviderCallRecord
     public function __construct(
         public readonly ?int $generationJobId,
         public readonly ?int $projectId,
+        public readonly ?int $videoId,
         public readonly ?int $userId,
         public readonly ProviderCapability $capability,
         public readonly ?ProviderOperation $operation,

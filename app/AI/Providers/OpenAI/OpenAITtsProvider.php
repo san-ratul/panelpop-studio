@@ -120,6 +120,51 @@ final class OpenAITtsProvider implements ConfigurableProvider, TtsProvider
         return $this->resultFrom($response, $text, $voice, $format, $model, $body);
     }
 
+    public function cachedArtifactPath(string $text, array $voiceConfig = []): ?string
+    {
+        $text = trim($text);
+
+        if ($text === '') {
+            return null;
+        }
+
+        try {
+            $model = $this->model();
+            $format = $this->responseFormat();
+            $voice = $this->voice($voiceConfig);
+        } catch (ProviderConfigurationException) {
+            return null; // unconfigured provider — nothing cached to reuse
+        }
+
+        $instructions = $voiceConfig['instructions'] ?? null;
+        $speed = $voiceConfig['speed'] ?? null;
+
+        $bodyInstructions = is_string($instructions) && trim($instructions) !== '' && $this->modelSupportsInstructions($model)
+            ? mb_substr(trim($instructions), 0, max(1, (int) config('ai.openai.tts.max_instructions_chars', 4096)))
+            : null;
+
+        $bodySpeed = is_numeric($speed) ? min(4.0, max(0.25, (float) $speed)) : null;
+
+        $formatMeta = self::FORMATS[$format] ?? null;
+
+        if ($formatMeta === null) {
+            return null;
+        }
+
+        $fingerprint = RequestFingerprint::generate('openai', $model, [
+            'text' => $text,
+            'voice' => $voice,
+            'format' => $format,
+            'speed' => $bodySpeed,
+            'instructions' => $bodyInstructions,
+        ]);
+
+        $path = sprintf('openai/audio/%s.%s', $fingerprint, $formatMeta['ext']);
+        $disk = (string) config('ai.artifact_disk');
+
+        return Storage::disk($disk)->exists($path) ? $path : null;
+    }
+
     private function resultFrom(Response $response, string $text, string $voice, string $format, string $model, array $body): AudioResult
     {
         $bytes = $response->body();

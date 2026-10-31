@@ -14,5 +14,6 @@ final class PlannedScene
         public readonly string $imagePrompt,
         public readonly ?string $narrationText = null,
         public readonly array $dialogue = [],
+        public readonly ?string $narrationVoiceInstructions = null,
     ) {}
 }

@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'project_id',
+    'video_id',
     'title',
     'logline',
     'full_text',
@@ -31,9 +31,9 @@ class Story extends Model
         ];
     }
 
-    public function project(): BelongsTo
+    public function video(): BelongsTo
     {
-        return $this->belongsTo(Project::class);
+        return $this->belongsTo(Video::class);
     }
 
     public function scenes(): HasMany

@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'generation_job_id',
     'project_id',
+    'video_id',
     'user_id',
     'capability',
     'operation',
@@ -74,6 +75,11 @@ class ProviderCall extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function video(): BelongsTo
+    {
+        return $this->belongsTo(Video::class);
     }
 
     public function user(): BelongsTo

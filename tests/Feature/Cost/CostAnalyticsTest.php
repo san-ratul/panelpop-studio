@@ -15,6 +15,7 @@ use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Cost\CostAnalyticsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -189,8 +190,10 @@ class CostAnalyticsTest extends TestCase
     public function test_per_video_cost_combines_ledger_and_measured_render_allocation(): void
     {
         $project = Project::factory()->for($this->member)->create();
+        $video = $this->makeVideo($project);
 
         ProviderCall::factory()->for($project, 'project')->create([
+            'video_id' => $video->id,
             'user_id' => $this->member->id,
             'operation' => ProviderOperation::SceneImage->value,
             'status' => ProviderCallStatus::Success->value,
@@ -200,6 +203,7 @@ class CostAnalyticsTest extends TestCase
         ]);
 
         $renderJob = GenerationJob::factory()->for($project)->create([
+            'video_id' => $video->id,
             'type' => GenerationJobType::VideoRender->value,
             'status' => GenerationJobStatus::Succeeded->value,
             'started_at' => now()->subMinutes(2),
@@ -209,6 +213,7 @@ class CostAnalyticsTest extends TestCase
 
         // Measured storage: one retained video artifact.
         Asset::factory()->for($project)->create([
+            'video_id' => $video->id,
             'type' => AssetType::Video->value,
             'size_bytes' => 1073741824,
         ]);

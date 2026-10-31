@@ -8,8 +8,8 @@ use App\Enums\ProjectStatus;
 use App\Jobs\RenderVideoJob;
 use App\Models\Asset;
 use App\Models\GenerationJob;
-use App\Models\Project;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Render\ProcessResult;
 use App\Services\Render\RenderOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -70,9 +70,9 @@ class RenderPipelineTest extends TestCase
         parent::tearDown();
     }
 
-    private function makeJob(Project $project): GenerationJob
+    private function makeJob(Video $video): GenerationJob
     {
-        return $project->generationJobs()->create([
+        return $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Queued,
             'attempts' => 0,
@@ -120,12 +120,13 @@ class RenderPipelineTest extends TestCase
 
     public function test_a_narrator_project_renders_publishes_and_completes(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->queueHappyPath(30.0);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -138,17 +139,17 @@ class RenderPipelineTest extends TestCase
         $this->assertSame(30000, $job->result['duration_ms']);
         $this->assertSame(2, $job->result['srt_cues']); // both narrations measured
 
-        $video = Asset::query()->find($job->result['video_asset_id']);
+        $published = Asset::query()->find($job->result['video_asset_id']);
 
-        $this->assertSame('video', $video->type->value);
-        $this->assertSame('media-private', $video->disk);
-        $this->assertStringStartsWith('renders/'.$project->id.'/', $video->path);
-        $this->assertSame('video/mp4', $video->mime);
-        $this->assertGreaterThan(0, $video->size_bytes);
-        $this->assertArrayHasKey('checksum', $video->meta);
-        $this->assertArrayHasKey('rendered_at', $video->meta);
+        $this->assertSame('video', $published->type->value);
+        $this->assertSame('media-private', $published->disk);
+        $this->assertStringStartsWith('renders/'.$project->id.'/', $published->path);
+        $this->assertSame('video/mp4', $published->mime);
+        $this->assertGreaterThan(0, $published->size_bytes);
+        $this->assertArrayHasKey('checksum', $published->meta);
+        $this->assertArrayHasKey('rendered_at', $published->meta);
 
-        Storage::disk('media-private')->assertExists($video->path);
+        Storage::disk('media-private')->assertExists($published->path);
         Storage::disk('media-private')->assertExists(
             Asset::query()->find($job->result['thumbnail_asset_id'])->path,
         );
@@ -156,24 +157,24 @@ class RenderPipelineTest extends TestCase
             Asset::query()->find($job->result['subtitle_asset_id'])->path,
         );
 
-        $project->refresh();
-
-        $this->assertSame(ProjectStatus::Completed, $project->status);
-        $this->assertNotNull($project->scenes()->first()->rendered_at);
+        $this->assertSame(ProjectStatus::Completed, $video->refresh()->status);
+        $this->assertSame(ProjectStatus::Completed, $project->refresh()->status); // re-derived
+        $this->assertNotNull($video->scenes()->first()->rendered_at);
     }
 
     public function test_a_silent_project_renders_a_video_only_result(): void
     {
-        $project = $this->createRenderableProject($this->user, 'silent', [
+        $video = $this->createRenderableProject($this->user, 'silent', [
             1 => ['narration' => null],
             2 => ['narration' => null],
         ]);
+        $project = $video->project;
 
-        $job = $this->makeJob($project);
+        $job = $this->makeJob($video);
 
         $this->queueHappyPath(30.0, 'conforming_silent.json');
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -191,8 +192,9 @@ class RenderPipelineTest extends TestCase
 
     public function test_an_encoder_failure_is_sanitized_recorded_and_cleaned_up(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $tempRoot = (string) config('ffmpeg.temp_dir');
 
@@ -207,7 +209,7 @@ class RenderPipelineTest extends TestCase
             ),
         );
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -223,8 +225,9 @@ class RenderPipelineTest extends TestCase
         $this->assertStringNotContainsString($tempRoot, (string) $job->result['stderr_tail']);
         $this->assertStringContainsString('encoder', (string) $job->result['stderr_tail']);
 
-        // No artifacts published, project marked failed.
+        // No artifacts published, video (and the derived project) marked failed.
         $this->assertSame(0, Asset::query()->whereIn('type', ['video', 'thumbnail', 'subtitle'])->count());
+        $this->assertSame(ProjectStatus::Failed, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Failed, $project->refresh()->status);
 
         // Intermediates cleaned despite the failure.
@@ -233,32 +236,35 @@ class RenderPipelineTest extends TestCase
 
     public function test_a_timeout_fails_the_job_with_an_actionable_message(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->runner->queue(
             fn (array $args, float $timeout): ProcessResult => new ProcessResult(-1, '', '', true, false),
         );
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
         $this->assertSame(GenerationJobStatus::Failed, $job->status);
         $this->assertStringContainsString('timed out', (string) $job->error_message);
+        $this->assertSame(ProjectStatus::Failed, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Failed, $project->refresh()->status);
     }
 
     public function test_a_missing_binary_fails_the_job_without_publishing(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->runner->queue(
             fn (array $args, float $timeout): ProcessResult => new ProcessResult(-1, '', '', false, true),
         );
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -269,8 +275,9 @@ class RenderPipelineTest extends TestCase
 
     public function test_a_gate_failure_quarantines_the_artifact_and_fails_the_job(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->runner->queue(
             function (array $args, float $timeout): ProcessResult {
@@ -297,7 +304,7 @@ class RenderPipelineTest extends TestCase
             fn (): ProcessResult => $this->fixtureProbeResult('wrong_codec.json', 30.0),
         );
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -307,17 +314,19 @@ class RenderPipelineTest extends TestCase
         $this->assertArrayHasKey('gate_violations', (array) $job->result);
 
         // The artifact is quarantined on the private disk — never offered.
-        $quarantined = Storage::disk('media-private')->allFiles('renders/'.$project->id.'/quarantine');
+        $quarantined = Storage::disk('media-private')->allFiles('renders/'.$video->id.'/quarantine');
 
         $this->assertCount(1, $quarantined);
         $this->assertSame(0, Asset::query()->where('type', 'video')->count());
+        $this->assertSame(ProjectStatus::Failed, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Failed, $project->refresh()->status);
     }
 
     public function test_a_failed_re_render_never_hides_the_previous_completed_video(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         // A previous successful render exists.
         $oldPath = 'renders/'.$project->id.'/old.mp4';
@@ -325,6 +334,7 @@ class RenderPipelineTest extends TestCase
 
         $previous = Asset::query()->create([
             'project_id' => $project->id,
+            'video_id' => $video->id,
             'type' => 'video',
             'disk' => 'media-private',
             'path' => $oldPath,
@@ -333,7 +343,7 @@ class RenderPipelineTest extends TestCase
             'status' => 'ready',
         ]);
 
-        $project->update(['status' => 'completed']);
+        $video->update(['status' => 'completed']);
 
         // The new render fails at the gate.
         $this->runner->queue(
@@ -360,7 +370,7 @@ class RenderPipelineTest extends TestCase
             fn (): ProcessResult => $this->fixtureProbeResult('wrong_resolution.json', 30.0),
         );
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -369,19 +379,22 @@ class RenderPipelineTest extends TestCase
         // The old video survives untouched and stays downloadable.
         $this->assertTrue($previous->refresh()->exists());
         Storage::disk('media-private')->assertExists($oldPath);
+        $this->assertSame(ProjectStatus::Completed, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Completed, $project->refresh()->status);
     }
 
     public function test_a_successful_re_render_replaces_the_previous_artifacts(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $oldPath = 'renders/'.$project->id.'/old.mp4';
         Storage::disk('media-private')->put($oldPath, $this->mp4FaststartBytes());
 
         $previous = Asset::query()->create([
             'project_id' => $project->id,
+            'video_id' => $video->id,
             'type' => 'video',
             'disk' => 'media-private',
             'path' => $oldPath,
@@ -392,36 +405,38 @@ class RenderPipelineTest extends TestCase
 
         $this->queueHappyPath(30.0);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
         $this->assertSame(GenerationJobStatus::Succeeded, $job->status);
 
-        $video = Asset::query()->where('type', 'video')->sole();
+        $published = Asset::query()->where('type', 'video')->sole();
 
-        $this->assertNotSame($previous->id, $video->id);
-        $this->assertNotSame($oldPath, $video->path);
+        $this->assertNotSame($previous->id, $published->id);
+        $this->assertNotSame($oldPath, $published->path);
 
-        Storage::disk('media-private')->assertExists($video->path);
+        Storage::disk('media-private')->assertExists($published->path);
         Storage::disk('media-private')->assertMissing($oldPath);
     }
 
     public function test_a_preflight_failure_inside_the_job_keeps_the_project_state(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         // Remove a scene image AFTER the job row was created.
-        $scene = $project->scenes()->first();
+        $scene = $video->scenes()->first();
         $scene->update(['image_asset_id' => null, 'status' => 'pending']);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
         $this->assertSame(GenerationJobStatus::Failed, $job->status);
         $this->assertStringContainsString('no generated image yet', (string) $job->error_message);
+        $this->assertSame(ProjectStatus::Planned, $video->refresh()->status);
         $this->assertSame(ProjectStatus::Planned, $project->refresh()->status);
 
         // No encode/mux process ever ran — only the binary handshake probes.
@@ -434,12 +449,13 @@ class RenderPipelineTest extends TestCase
 
     public function test_progress_is_reported_during_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->queueHappyPath(30.0);
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $job->refresh();
 
@@ -449,8 +465,9 @@ class RenderPipelineTest extends TestCase
 
     public function test_every_process_invocation_uses_the_configured_binary_and_timeout(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $job = $this->makeJob($project);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
+        $job = $this->makeJob($video);
 
         $this->queueHappyPath(30.0);
 
@@ -458,7 +475,7 @@ class RenderPipelineTest extends TestCase
         $encodeTimeout = (float) config('ffmpeg.timeout_seconds');
         $probeTimeout = (float) config('ffmpeg.probe_timeout_seconds');
 
-        (new RenderVideoJob($project->id, $job->id))->handle(app(RenderOrchestrator::class));
+        (new RenderVideoJob($project->id, $job->id, $video->id))->handle(app(RenderOrchestrator::class));
 
         $this->assertNotEmpty($this->runner->calls);
 

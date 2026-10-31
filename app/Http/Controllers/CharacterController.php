@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Exceptions\ProviderException;
 use App\AI\Support\VoiceCatalog;
 use App\Enums\GenerationJobType;
 use App\Http\Controllers\Support\GenerationJobPresenter;
@@ -9,7 +10,10 @@ use App\Http\Requests\CharacterRequest;
 use App\Models\Character;
 use App\Models\Project;
 use App\Services\GenerationJobGuard;
+use App\Services\VoicePreviewService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -18,13 +22,14 @@ class CharacterController extends Controller
 {
     public function __construct(
         private readonly GenerationJobGuard $jobGuard,
+        private readonly VoicePreviewService $voicePreview,
     ) {}
 
     public function index(Project $project): Response
     {
         $this->authorize('view', $project);
 
-        $referenceJobs = GenerationJobPresenter::recent($project, GenerationJobType::CharacterReference);
+        $referenceJobs = GenerationJobPresenter::recentForProject($project, GenerationJobType::CharacterReference);
 
         return Inertia::render('Characters/Index', [
             'project' => ProjectController::present($project),
@@ -117,6 +122,43 @@ class CharacterController extends Controller
 
         return redirect()->route('characters.index', $project)
             ->with('success', sprintf('Reference image generation queued for %s.', $character->name));
+    }
+
+    /**
+     * Streams a short voice preview for the selected voice + style so the
+     * user can listen before saving. The response IS the audio bytes (the
+     * preview component fetches it via XHR and plays it); nothing is
+     * persisted as a production asset, and identical selections reuse the
+     * cached provider artifact.
+     */
+    public function previewVoice(Request $request, Project $project): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->authorize('create', [Character::class, $project]);
+
+        $data = $request->validate([
+            'voice' => ['nullable', 'string', 'max:120'],
+            'style' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        try {
+            $preview = $this->voicePreview->preview($project, $data['voice'] ?? null, $data['style'] ?? null);
+        } catch (ProviderException $exception) {
+            throw ValidationException::withMessages([
+                'preview' => sprintf('Voice preview failed: %s', $exception->getMessage()),
+            ]);
+        }
+
+        $disk = Storage::disk($preview['disk']);
+
+        abort_unless($disk->exists($preview['path']), 404);
+
+        return response()->streamDownload(function () use ($disk, $preview): void {
+            echo $disk->get($preview['path']);
+        }, 'voice-preview.'.pathinfo($preview['path'], PATHINFO_EXTENSION), [
+            'Content-Type' => $preview['mime'],
+            'Cache-Control' => 'private, max-age=3600',
+            'X-Preview-Reused' => $preview['reused'] ? '1' : '0',
+        ]);
     }
 
     public static function present(Character $character): array

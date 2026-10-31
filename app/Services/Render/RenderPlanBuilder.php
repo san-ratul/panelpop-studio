@@ -15,16 +15,17 @@ use App\Exceptions\RenderPreFlightException;
 use App\Models\Asset;
 use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use App\Services\AudioLicenceGate;
 use App\Services\DurationValidator;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Render pre-flight + deterministic plan construction (VIDEO_RENDERING.md
- * step 1). Reuses the existing Phase 1–5 services — the audio licence gate
- * (AudioLicenceGate) and the duration tolerance validator (DurationValidator)
- * — rather than duplicating them, and re-checks the licence gate at the
- * render boundary (AUDIO_AND_LICENSING.md hard rule 1).
+ * Render pre-flight + deterministic plan construction for ONE video
+ * (VIDEO_RENDERING.md step 1). Reuses the existing services — the audio
+ * licence gate (AudioLicenceGate) and the duration tolerance validator
+ * (DurationValidator) — rather than duplicating them, and re-checks the
+ * licence gate at the render boundary (AUDIO_AND_LICENSING.md hard rule 1).
  *
  * Every failure is an actionable, sanitized message (no absolute paths, no
  * binary names, no traces). Plan construction never runs FFmpeg; binary
@@ -37,23 +38,24 @@ final class RenderPlanBuilder
         private readonly BinaryProbe $binaryProbe,
     ) {}
 
-    public function build(Project $project, ?float $minFreeDiskMb = null, ?int $exceptJobId = null): RenderPlan
+    public function build(Video $video, ?float $minFreeDiskMb = null, ?int $exceptJobId = null): RenderPlan
     {
+        $project = $video->project;
         $errors = [];
         $warnings = [];
 
-        $this->assertLaunchable($project, $exceptJobId, $errors);
+        $this->assertLaunchable($video, $exceptJobId, $errors);
 
-        $scenes = $project->scenes()->orderBy('number')->get();
+        $scenes = $video->scenes()->orderBy('number')->get();
 
         if ($scenes->isEmpty()) {
-            $errors[] = 'This project has no scenes yet. Create a scene plan before rendering.';
+            $errors[] = 'This video has no scenes yet. Create a scene plan before rendering.';
         }
 
         try {
             (new DurationValidator)->assertSceneDurationsComplete(
                 $scenes->map(static fn (Scene $scene): float => (float) $scene->duration_seconds)->all(),
-                $project->target_duration_seconds,
+                $video->target_duration_seconds,
             );
         } catch (DomainValidationException $exception) {
             foreach ($exception->errors as $messages) {
@@ -63,8 +65,9 @@ final class RenderPlanBuilder
             }
         }
 
-        $narrationExpected = self::modeAllowsNarration($project->presentation_mode);
-        $dialogueExpected = self::modeAllowsDialogue($project->presentation_mode);
+        $presentationMode = $video->effectivePresentationMode();
+        $narrationExpected = self::modeAllowsNarration($presentationMode);
+        $dialogueExpected = self::modeAllowsDialogue($presentationMode);
 
         $planScenes = [];
 
@@ -72,7 +75,8 @@ final class RenderPlanBuilder
             $planScenes[] = $this->buildScene($scene, $narrationExpected, $dialogueExpected, $errors, $warnings);
         }
 
-        // Licence gate (hard rule: re-tested at the render boundary).
+        // Licence gate (hard rule: re-tested at the render boundary). Music
+        // and SFX are a project-level library shared by all videos.
         $errors = array_merge($errors, $this->licenceGate->blockMessages($project));
 
         [$musicAssets, $extraWarnings] = $this->collectBackgroundAudio($project, AssetType::Music);
@@ -105,7 +109,8 @@ final class RenderPlanBuilder
 
         return new RenderPlan(
             projectId: $project->id,
-            presentationMode: $project->presentation_mode->value,
+            videoId: $video->id,
+            presentationMode: $presentationMode->value,
             scenes: $planScenes,
             musicAssets: $musicAssets,
             sfxAssets: $sfxAssets,
@@ -117,24 +122,24 @@ final class RenderPlanBuilder
     // Launch state
     // ------------------------------------------------------------------
 
-    private function assertLaunchable(Project $project, ?int $exceptJobId, array &$errors): void
+    private function assertLaunchable(Video $video, ?int $exceptJobId, array &$errors): void
     {
-        if ($project->status === ProjectStatus::Rendering) {
-            $errors[] = 'This project is already rendering. Wait for the current render to finish.';
+        if ($video->status === ProjectStatus::Rendering) {
+            $errors[] = 'This video is already rendering. Wait for the current render to finish.';
         }
 
-        if (in_array($project->status, [ProjectStatus::Draft, ProjectStatus::StoryReady], true)) {
+        if (in_array($video->status, [ProjectStatus::Draft, ProjectStatus::StoryReady], true)) {
             $errors[] = 'Complete the storyboard first (scene plan with durations) before rendering.';
         }
 
-        if ($this->activeRenderJob($project, $exceptJobId) !== null) {
-            $errors[] = 'A render job is already queued or running for this project. Wait for it to finish.';
+        if ($this->activeRenderJob($video, $exceptJobId) !== null) {
+            $errors[] = 'A render job is already queued or running for this video. Wait for it to finish.';
         }
     }
 
-    private function activeRenderJob(Project $project, ?int $exceptJobId = null): ?object
+    private function activeRenderJob(Video $video, ?int $exceptJobId = null): ?object
     {
-        return $project->generationJobs()
+        return $video->generationJobs()
             ->where('type', GenerationJobType::VideoRender->value)
             ->where('id', '!=', $exceptJobId ?? 0)
             ->whereIn('status', [GenerationJobStatus::Queued->value, GenerationJobStatus::Running->value])

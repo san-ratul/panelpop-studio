@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'title',
@@ -43,24 +42,14 @@ class Project extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function story(): HasOne
+    public function videos(): HasMany
     {
-        return $this->hasOne(Story::class);
-    }
-
-    public function videoMetadata(): HasOne
-    {
-        return $this->hasOne(VideoMetadata::class);
+        return $this->hasMany(Video::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function characters(): HasMany
     {
         return $this->hasMany(Character::class);
-    }
-
-    public function scenes(): HasMany
-    {
-        return $this->hasMany(Scene::class)->orderBy('number');
     }
 
     public function assets(): HasMany
@@ -71,5 +60,10 @@ class Project extends Model
     public function generationJobs(): HasMany
     {
         return $this->hasMany(GenerationJob::class);
+    }
+
+    public function providerCalls(): HasMany
+    {
+        return $this->hasMany(ProviderCall::class);
     }
 }

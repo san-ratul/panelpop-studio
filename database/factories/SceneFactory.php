@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
-use App\Models\Project;
 use App\Models\Scene;
+use App\Models\Video;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -14,7 +14,7 @@ class SceneFactory extends Factory
     public function definition(): array
     {
         return [
-            'project_id' => Project::factory(),
+            'video_id' => Video::factory(),
             'story_id' => null,
             'number' => 1,
             'duration_seconds' => 10.0,

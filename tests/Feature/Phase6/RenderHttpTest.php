@@ -8,6 +8,7 @@ use App\Models\Asset;
 use App\Models\AudioLicence;
 use App\Models\GenerationJob;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Render\ProcessResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -45,16 +46,17 @@ class RenderHttpTest extends TestCase
         $this->intruder = User::factory()->create();
     }
 
-    private function publishArtifacts($project): array
+    private function publishArtifacts(Video $video): array
     {
         $paths = [];
 
         foreach (['video' => 'mp4', 'thumbnail' => 'png', 'subtitle' => 'srt'] as $type => $ext) {
-            $path = sprintf('renders/%d/published.%s', $project->id, $ext);
+            $path = sprintf('renders/%d/published.%s', $video->project_id, $ext);
             Storage::disk('media-private')->put($path, 'artifact-bytes');
 
             $paths[$type] = Asset::query()->create([
-                'project_id' => $project->id,
+                'project_id' => $video->project_id,
+                'video_id' => $video->id,
                 'type' => $type,
                 'disk' => 'media-private',
                 'path' => $path,
@@ -70,10 +72,11 @@ class RenderHttpTest extends TestCase
 
     public function test_the_owner_sees_the_render_page_with_jobs_and_assets(): void
     {
-        $project = $this->createRenderableProject($this->owner);
-        $this->publishArtifacts($project);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
+        $this->publishArtifacts($video);
 
-        $project->generationJobs()->create([
+        $video->generationJobs()->create([
             'type' => GenerationJobType::VideoRender,
             'status' => GenerationJobStatus::Succeeded,
             'attempts' => 1,
@@ -81,7 +84,7 @@ class RenderHttpTest extends TestCase
             'progress' => 100,
         ]);
 
-        $response = $this->actingAs($this->owner)->get(route('render.show', $project));
+        $response = $this->actingAs($this->owner)->get(route('render.show', [$project, $video]));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
@@ -98,20 +101,22 @@ class RenderHttpTest extends TestCase
 
     public function test_an_intruder_cannot_view_the_render_page(): void
     {
-        $project = $this->createRenderableProject($this->owner);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
 
-        $this->actingAs($this->intruder)->get(route('render.show', $project))->assertForbidden();
+        $this->actingAs($this->intruder)->get(route('render.show', [$project, $video]))->assertForbidden();
     }
 
     public function test_the_owner_launches_a_render_from_the_ui(): void
     {
-        $project = $this->createRenderableProject($this->owner);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
 
         $this->queueFullHappyPath();
 
-        $response = $this->actingAs($this->owner)->post(route('render.store', $project));
+        $response = $this->actingAs($this->owner)->post(route('render.store', [$project, $video]));
 
-        $response->assertRedirect(route('render.show', $project));
+        $response->assertRedirect(route('render.show', [$project, $video]));
 
         $job = GenerationJob::query()->sole();
 
@@ -122,9 +127,10 @@ class RenderHttpTest extends TestCase
 
     public function test_an_intruder_cannot_launch_a_render(): void
     {
-        $project = $this->createRenderableProject($this->owner);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
 
-        $this->actingAs($this->intruder)->post(route('render.store', $project))->assertForbidden();
+        $this->actingAs($this->intruder)->post(route('render.store', [$project, $video]))->assertForbidden();
         $this->assertSame(0, GenerationJob::query()->count());
     }
 
@@ -167,8 +173,9 @@ class RenderHttpTest extends TestCase
 
     public function test_the_owner_downloads_every_rendered_artifact(): void
     {
-        $project = $this->createRenderableProject($this->owner);
-        $assets = $this->publishArtifacts($project);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
+        $assets = $this->publishArtifacts($video);
 
         foreach (['video' => 'video/mp4', 'thumbnail' => 'image/png', 'subtitle' => 'application/x-subrip'] as $type => $mime) {
             $response = $this->actingAs($this->owner)
@@ -188,8 +195,9 @@ class RenderHttpTest extends TestCase
 
     public function test_an_intruder_and_guests_cannot_download_rendered_artifacts(): void
     {
-        $project = $this->createRenderableProject($this->owner);
-        $assets = $this->publishArtifacts($project);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
+        $assets = $this->publishArtifacts($video);
 
         $this->actingAs($this->intruder)
             ->get(route('assets.show', ['project' => $project->id, 'asset' => $assets['video']->id]))
@@ -204,10 +212,12 @@ class RenderHttpTest extends TestCase
 
     public function test_assets_of_another_project_are_never_reachable(): void
     {
-        $projectA = $this->createRenderableProject($this->owner);
-        $projectB = $this->createRenderableProject($this->owner);
+        $videoA = $this->createRenderableProject($this->owner);
+        $projectA = $videoA->project;
+        $videoB = $this->createRenderableProject($this->owner);
+        $projectB = $videoB->project;
 
-        $assets = $this->publishArtifacts($projectA);
+        $assets = $this->publishArtifacts($videoA);
 
         // Project-scoped route binding: project B's URL space cannot serve
         // project A's asset.
@@ -218,8 +228,9 @@ class RenderHttpTest extends TestCase
 
     public function test_no_public_path_serves_the_private_artifacts(): void
     {
-        $project = $this->createRenderableProject($this->owner);
-        $assets = $this->publishArtifacts($project);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
+        $assets = $this->publishArtifacts($video);
 
         // The media-private disk lives outside the webroot; the public
         // storage path must never serve it (404 or denied — never 200).
@@ -236,7 +247,8 @@ class RenderHttpTest extends TestCase
 
     public function test_the_page_shows_licence_gate_blocks(): void
     {
-        $project = $this->createRenderableProject($this->owner);
+        $video = $this->createRenderableProject($this->owner);
+        $project = $video->project;
 
         $music = Asset::query()->create([
             'project_id' => $project->id,
@@ -256,7 +268,7 @@ class RenderHttpTest extends TestCase
             'evidence' => [],
         ]);
 
-        $this->actingAs($this->owner)->get(route('render.show', $project))
+        $this->actingAs($this->owner)->get(route('render.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('blockedAssets', fn ($blocked) => count($blocked) === 1 && str_contains($blocked[0], 'not licence-verified')));

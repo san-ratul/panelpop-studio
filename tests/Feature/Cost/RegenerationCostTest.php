@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -29,6 +30,8 @@ class RegenerationCostTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -42,6 +45,7 @@ class RegenerationCostTest extends TestCase
             'status' => 'planned',
             'presentation_mode' => 'narrator',
         ]);
+        $this->video = $this->makeVideo($this->project);
 
         $this->actingAs($this->user);
 
@@ -54,7 +58,7 @@ class RegenerationCostTest extends TestCase
 
     private function addScene(int $number, ?string $narration = 'The narrator sets the scene.'): Scene
     {
-        return Scene::factory()->for($this->project)->create([
+        return Scene::factory()->for($this->video)->create([
             'number' => $number,
             'narration_text' => $narration,
             'background_description' => 'A tidy workshop at night.',
@@ -68,13 +72,13 @@ class RegenerationCostTest extends TestCase
         $scene = $this->addScene(1);
 
         // First generation: one provider call.
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
         $this->assertSame(1, ProviderCall::query()->count());
 
         // Re-running the whole batch: the dispatcher dedupes BEFORE creating
         // a job (a ready asset is never re-queued without force) — no new
         // job, no new provider call.
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $this->assertSame(1, ProviderCall::query()->count());
         $this->assertSame(1, GenerationJob::query()->count());
@@ -84,13 +88,13 @@ class RegenerationCostTest extends TestCase
     {
         $scene = $this->addScene(1);
 
-        $this->post(route('audio.generate', $this->project))->assertRedirect();
+        $this->post(route('audio.generate', [$this->project, $this->video]))->assertRedirect();
 
         $firstCall = ProviderCall::query()->sole();
         $firstAssetId = $scene->fresh()->narration_audio_asset_id;
 
         // Explicit regenerate (the endpoint force-flags when audio exists).
-        $this->post(route('scenes.generate-narration', [$this->project, $scene]))->assertRedirect();
+        $this->post(route('scenes.generate-narration', [$this->project, $this->video, $scene]))->assertRedirect();
 
         $calls = ProviderCall::query()->orderBy('id')->get();
 

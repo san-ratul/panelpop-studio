@@ -14,6 +14,7 @@ use App\Enums\ProviderCapability;
 use App\Enums\ProviderOperation;
 use App\Models\GenerationJob;
 use App\Models\Project;
+use App\Models\Video;
 use App\Services\StoryPersister;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,7 +26,9 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Generates a story draft via the configured text provider and persists it.
+ * Generates a story draft via the configured text provider and persists it
+ * for one video (the ledger row's video reference). The video's effective
+ * settings (style/language/presentation overrides) drive the brief.
  *
  * Retry convention (PROVIDER_INTEGRATION.md): provider calls retry inside the
  * gateway within its attempt cap; the queue job itself never retries
@@ -43,6 +46,7 @@ final class GenerateStoryJob implements ShouldQueue
         public readonly int $projectId,
         public readonly int $generationJobId,
         public readonly string $storyIdea,
+        public readonly ?int $videoId = null,
     ) {}
 
     /**
@@ -50,8 +54,10 @@ final class GenerateStoryJob implements ShouldQueue
      */
     public function middleware(): array
     {
+        // Per-video overlap key: two videos of one project may generate
+        // stories concurrently without queue-blocking each other.
         return [
-            (new WithoutOverlapping("story-generation:{$this->projectId}"))->expireAfter(900),
+            (new WithoutOverlapping("story-generation:{$this->videoId}"))->expireAfter(900),
         ];
     }
 
@@ -59,8 +65,9 @@ final class GenerateStoryJob implements ShouldQueue
     {
         $job = GenerationJob::query()->find($this->generationJobId);
         $project = Project::query()->find($this->projectId);
+        $video = $this->videoId !== null ? Video::query()->find($this->videoId) : null;
 
-        if ($job === null || $project === null || $job->type !== GenerationJobType::StoryGeneration) {
+        if ($job === null || $project === null || $video === null || $job->type !== GenerationJobType::StoryGeneration) {
             return;
         }
 
@@ -75,7 +82,7 @@ final class GenerateStoryJob implements ShouldQueue
             'progress' => 10,
         ]);
 
-        $persister->markGenerating($project, $this->storyIdea);
+        $persister->markGenerating($video, $this->storyIdea);
 
         try {
             $resolved = $manager->resolve(ProviderCapability::Text, $project);
@@ -85,15 +92,15 @@ final class GenerateStoryJob implements ShouldQueue
                 ['kind' => 'story', 'topic' => $this->storyIdea],
                 fn (): StoryDraft => $resolved->textAdapter()->generateStory(new StoryBrief(
                     topic: $this->storyIdea,
-                    targetDurationSeconds: $project->target_duration_seconds,
-                    visualStyle: $project->visual_style,
-                    language: $project->language,
-                    presentationMode: $project->presentation_mode->value,
+                    targetDurationSeconds: $video->target_duration_seconds,
+                    visualStyle: $video->effectiveVisualStyle(),
+                    language: $video->effectiveLanguage(),
+                    presentationMode: $video->effectivePresentationMode()->value,
                 )),
-                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::Story),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::Story, $video->id),
             );
 
-            $summary = $persister->persistDraft($project, $draft, $job, $resolved->provider, $resolved->model);
+            $summary = $persister->persistDraft($video, $draft, $job, $resolved->provider, $resolved->model);
 
             $job->update([
                 'status' => GenerationJobStatus::Succeeded,
@@ -104,19 +111,19 @@ final class GenerateStoryJob implements ShouldQueue
                 'error_class' => null,
             ]);
         } catch (Throwable $exception) {
-            $this->failJob($job, $exception, $persister, $project);
+            $this->failJob($job, $exception, $persister, $video);
 
             throw $exception;
         }
     }
 
-    private function failJob(GenerationJob $job, Throwable $exception, StoryPersister $persister, Project $project): void
+    private function failJob(GenerationJob $job, Throwable $exception, StoryPersister $persister, Video $video): void
     {
         $message = $exception instanceof ProviderException
             ? $exception->getMessage()
             : 'Story generation failed unexpectedly. Check the application logs and try again.';
 
-        DB::transaction(function () use ($job, $exception, $message, $persister, $project): void {
+        DB::transaction(function () use ($job, $exception, $message, $persister, $video): void {
             $job->update([
                 'status' => GenerationJobStatus::Failed,
                 'finished_at' => now(),
@@ -126,7 +133,7 @@ final class GenerateStoryJob implements ShouldQueue
             ]);
 
             if ($exception instanceof ProviderException) {
-                $persister->markFailed($project);
+                $persister->markFailed($video);
             }
         });
     }

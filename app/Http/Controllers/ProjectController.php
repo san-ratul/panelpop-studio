@@ -33,8 +33,10 @@ class ProjectController extends Controller
     {
         $project = $request->user()->projects()->create($request->validated());
 
-        return redirect()->route('story.edit', $project)
-            ->with('success', 'Project created. Add your story next.');
+        // New projects start with an empty video workspace; the project's
+        // visual style + language become the defaults every video inherits.
+        return redirect()->route('videos.index', $project)
+            ->with('success', 'Project created. Create your first video next.');
     }
 
     public function edit(Request $request, Project $project): Response

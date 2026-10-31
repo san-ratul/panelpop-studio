@@ -2,29 +2,29 @@
 
 namespace App\Policies;
 
-use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 
 class ScenePolicy
 {
     public function view(User $user, Scene $scene): bool
     {
-        return $scene->project->user_id === $user->id;
+        return $scene->video->project->user_id === $user->id;
     }
 
-    public function create(User $user, Project $project): bool
+    public function create(User $user, Video $video): bool
     {
-        return $project->user_id === $user->id;
+        return $video->project->user_id === $user->id;
     }
 
     public function update(User $user, Scene $scene): bool
     {
-        return $scene->project->user_id === $user->id;
+        return $scene->video->project->user_id === $user->id;
     }
 
     public function delete(User $user, Scene $scene): bool
     {
-        return $scene->project->user_id === $user->id;
+        return $scene->video->project->user_id === $user->id;
     }
 }

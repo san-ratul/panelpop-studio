@@ -15,6 +15,7 @@ use App\Enums\ProviderOperation;
 use App\Enums\StoryStatus;
 use App\Models\GenerationJob;
 use App\Models\Project;
+use App\Models\Video;
 use App\Services\DurationValidator;
 use App\Services\ScenePlanPersister;
 use Illuminate\Bus\Queueable;
@@ -28,9 +29,13 @@ use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
- * Plans scenes for a ready story via the configured text provider and
- * persists scenes/characters/dialogue. Queue job never retries ($tries = 1);
- * provider-level retries live in the gateway.
+ * Plans scenes for a video's ready story via the configured text provider and
+ * persists scenes/characters/dialogue. The video's effective settings
+ * (style/language/presentation overrides) drive the plan constraints; the AI
+ * also assigns per-line speaker, emotion and voice instructions.
+ *
+ * Queue job never retries ($tries = 1); provider-level retries live in the
+ * gateway.
  */
 final class PlanScenesJob implements ShouldQueue
 {
@@ -43,6 +48,7 @@ final class PlanScenesJob implements ShouldQueue
     public function __construct(
         public readonly int $projectId,
         public readonly int $generationJobId,
+        public readonly ?int $videoId = null,
     ) {}
 
     /**
@@ -51,7 +57,7 @@ final class PlanScenesJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("scene-planning:{$this->projectId}"))->expireAfter(900),
+            (new WithoutOverlapping("scene-planning:{$this->videoId}"))->expireAfter(900),
         ];
     }
 
@@ -59,8 +65,9 @@ final class PlanScenesJob implements ShouldQueue
     {
         $job = GenerationJob::query()->find($this->generationJobId);
         $project = Project::query()->find($this->projectId);
+        $video = $this->videoId !== null ? Video::query()->find($this->videoId) : null;
 
-        if ($job === null || $project === null || $job->type !== GenerationJobType::ScenePlanning) {
+        if ($job === null || $project === null || $video === null || $job->type !== GenerationJobType::ScenePlanning) {
             return;
         }
 
@@ -68,7 +75,7 @@ final class PlanScenesJob implements ShouldQueue
             return;
         }
 
-        $story = $project->story()->first();
+        $story = $video->story()->first();
 
         if ($story === null || $story->status !== StoryStatus::Ready) {
             $job->update([
@@ -100,12 +107,12 @@ final class PlanScenesJob implements ShouldQueue
             );
 
             $constraints = new ScenePlanConstraints(
-                targetDurationSeconds: $project->target_duration_seconds,
+                targetDurationSeconds: $video->target_duration_seconds,
                 toleranceSeconds: DurationValidator::TOLERANCE_SECONDS,
                 extra: [
-                    'presentation_mode' => $project->presentation_mode->value,
-                    'visual_style' => $project->visual_style,
-                    'language' => $project->language,
+                    'presentation_mode' => $video->effectivePresentationMode()->value,
+                    'visual_style' => $video->effectiveVisualStyle(),
+                    'language' => $video->effectiveLanguage(),
                     'characters' => $project->characters()->get()
                         ->map(static fn ($character): array => [
                             'name' => $character->name,
@@ -119,10 +126,10 @@ final class PlanScenesJob implements ShouldQueue
                 $resolved,
                 ['kind' => 'plan', 'story_chars' => (string) mb_strlen($story->full_text)],
                 fn () => $resolved->textAdapter()->planScenes($draft, $constraints),
-                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::ScenePlanning),
+                new ProviderCallContext($project->id, $job->id, $project->user_id, ProviderOperation::ScenePlanning, $video->id),
             );
 
-            $summary = $persister->persistPlan($project, $story, $plan, $job, $resolved->provider, $resolved->model);
+            $summary = $persister->persistPlan($video, $story, $plan, $job, $resolved->provider, $resolved->model);
 
             $job->update([
                 'status' => GenerationJobStatus::Succeeded,

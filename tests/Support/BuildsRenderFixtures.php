@@ -10,25 +10,29 @@ use App\Enums\SceneStatus;
 use App\Models\Asset;
 use App\Models\Character;
 use App\Models\DialogueLine;
-use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\Render\ProcessResult;
 use App\Services\Render\ProcessRunner;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Builds ready-to-render fixture projects (Phase 6 tests): real PNG/WAV
- * bytes on the fake private disk, ready scenes with measured durations, and
+ * Builds ready-to-render fixture videos (Phase 6 tests): real PNG/WAV bytes
+ * on the fake private disk, ready scenes with measured durations, and
  * optional narration/dialogue audio with meta durations.
  */
 trait BuildsRenderFixtures
 {
     /**
+     * Creates a renderable fixture video (the video-scoped pipeline unit).
+     * The name is kept for history; callers receive the video and reach the
+     * project via $video->project.
+     *
      * @param  array<int, array{narration?: ?string, narration_duration_ms?: ?int, dialogue?: list<array{text: string, duration_ms?: ?int}>, bubble?: ?array<string, mixed>}>  $scenes
      */
-    protected function createRenderableProject(User $user, string $mode = 'narrator', array $scenes = [], int $target = 30): Project
+    protected function createRenderableProject(User $user, string $mode = 'narrator', array $scenes = [], int $target = 30): Video
     {
         $project = $user->projects()->create([
             'title' => 'Render fixture project',
@@ -38,6 +42,13 @@ trait BuildsRenderFixtures
             'language' => 'en',
             'status' => 'planned',
             'settings' => [],
+        ]);
+
+        $video = $this->makeVideo($project, [
+            'title' => 'Render fixture video',
+            'status' => 'planned',
+            'target_duration_seconds' => $target,
+            'presentation_mode_override' => null,
         ]);
 
         if ($scenes === []) {
@@ -52,7 +63,7 @@ trait BuildsRenderFixtures
         foreach ($scenes as $spec) {
             $number++;
 
-            $scene = Scene::factory()->for($project)->create([
+            $scene = Scene::factory()->for($video)->create([
                 'number' => $number,
                 'duration_seconds' => $target / count($scenes),
                 'narration_text' => $spec['narration'] ?? null,
@@ -66,6 +77,7 @@ trait BuildsRenderFixtures
 
             $imageAsset = Asset::query()->create([
                 'project_id' => $project->id,
+                'video_id' => $video->id,
                 'type' => AssetType::SceneImage,
                 'disk' => 'media-private',
                 'path' => $imagePath,
@@ -78,14 +90,14 @@ trait BuildsRenderFixtures
             $narrationAudio = null;
 
             if (($spec['narration'] ?? null) !== null && array_key_exists('narration_duration_ms', $spec)) {
-                $narrationAudio = $this->storeVoiceFixture($project, 'narration-'.$number, (int) $spec['narration_duration_ms']);
+                $narrationAudio = $this->storeVoiceFixture($video, 'narration-'.$number, (int) $spec['narration_duration_ms']);
             }
 
             foreach ($spec['dialogue'] ?? [] as $index => $line) {
                 $character = Character::factory()->for($project)->create();
 
                 $audio = $line['duration_ms'] !== null
-                    ? $this->storeVoiceFixture($project, 'line-'.$number.'-'.$index, (int) $line['duration_ms'])
+                    ? $this->storeVoiceFixture($video, 'line-'.$number.'-'.$index, (int) $line['duration_ms'])
                     : null;
 
                 DialogueLine::factory()->for($scene)->for($character)->create([
@@ -104,17 +116,18 @@ trait BuildsRenderFixtures
             ]);
         }
 
-        return $project;
+        return $video;
     }
 
-    protected function storeVoiceFixture(Project $project, string $name, int $durationMs): Asset
+    protected function storeVoiceFixture(Video $video, string $name, int $durationMs): Asset
     {
         $wav = FakeAudioFixture::wav($durationMs);
         $path = sprintf('fixtures/audio/%s.wav', $name.'-'.strtolower(Str::ulid()->toBase32()));
         Storage::disk('media-private')->put($path, $wav);
 
         return Asset::query()->create([
-            'project_id' => $project->id,
+            'project_id' => $video->project_id,
+            'video_id' => $video->id,
             'type' => AssetType::VoiceAudio,
             'disk' => 'media-private',
             'path' => $path,

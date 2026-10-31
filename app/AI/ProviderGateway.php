@@ -140,6 +140,7 @@ final class ProviderGateway
 
         return new ProviderCallRecord(
             generationJobId: $context->generationJobId,
+            videoId: $context->videoId,
             projectId: $context->projectId,
             userId: $context->userId,
             capability: $provider->capability,
@@ -183,6 +184,7 @@ final class ProviderGateway
 
         return new ProviderCallRecord(
             generationJobId: $context->generationJobId,
+            videoId: $context->videoId,
             projectId: $context->projectId,
             userId: $context->userId,
             capability: $provider->capability,

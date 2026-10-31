@@ -18,6 +18,8 @@ enum ProviderOperation: string
     case SceneImage = 'scene_image';
     case NarrationTts = 'narration_tts';
     case DialogueTts = 'dialogue_tts';
+    case VoicePreview = 'voice_preview';
+    case DialogueVoiceAssignment = 'dialogue_voice_assignment';
     case MusicGeneration = 'music_generation';
 
     /**
@@ -26,9 +28,9 @@ enum ProviderOperation: string
     public function capability(): ProviderCapability
     {
         return match ($this) {
-            self::Story, self::ScenePlanning, self::VideoMetadata => ProviderCapability::Text,
+            self::Story, self::ScenePlanning, self::VideoMetadata, self::DialogueVoiceAssignment => ProviderCapability::Text,
             self::CharacterReference, self::SceneImage => ProviderCapability::Image,
-            self::NarrationTts, self::DialogueTts => ProviderCapability::Tts,
+            self::NarrationTts, self::DialogueTts, self::VoicePreview => ProviderCapability::Tts,
             self::MusicGeneration => ProviderCapability::Music,
         };
     }

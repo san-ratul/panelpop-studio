@@ -62,7 +62,8 @@ final class ImageAssetPersister
             $this->deleteExisting($scene->imageAsset, $result);
 
             $asset = Asset::query()->create([
-                'project_id' => $scene->project_id,
+                'project_id' => $scene->video->project_id,
+                'video_id' => $scene->video_id,
                 'type' => AssetType::SceneImage,
                 'disk' => $result->disk,
                 'path' => $result->path,

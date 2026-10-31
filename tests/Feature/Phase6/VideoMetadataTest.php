@@ -7,10 +7,10 @@ use App\Enums\ProviderCallStatus;
 use App\Enums\ProviderCapability;
 use App\Models\Asset;
 use App\Models\GenerationJob;
-use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Story;
 use App\Models\User;
+use App\Models\Video;
 use App\Models\VideoMetadata;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,11 +45,11 @@ class VideoMetadataTest extends TestCase
         $this->intruder = User::factory()->create();
     }
 
-    private function completedRenderProject(): Project
+    private function completedRenderProject(): Video
     {
-        $project = $this->createRenderableProject($this->owner);
+        $video = $this->createRenderableProject($this->owner);
 
-        Story::factory()->for($project)->create([
+        Story::factory()->for($video)->create([
             'title' => 'The Lost Cartographer',
             'logline' => 'A young mapmaker discovers a city no chart has ever recorded.',
             'full_text' => "Mira inherits her grandfather's unfinished map. Following its last coordinate, she finds a hidden valley city and completes the map her grandfather began.",
@@ -59,7 +59,8 @@ class VideoMetadataTest extends TestCase
         Storage::disk('media-private')->put('renders/published.mp4', 'video-bytes');
 
         Asset::query()->create([
-            'project_id' => $project->id,
+            'project_id' => $video->project_id,
+            'video_id' => $video->id,
             'type' => 'video',
             'disk' => 'media-private',
             'path' => 'renders/published.mp4',
@@ -69,7 +70,7 @@ class VideoMetadataTest extends TestCase
             'status' => 'ready',
         ]);
 
-        return $project;
+        return $video;
     }
 
     private function fakeTextDefault(): void
@@ -83,16 +84,17 @@ class VideoMetadataTest extends TestCase
 
     public function test_completed_render_page_shows_saved_metadata(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
-        $project->videoMetadata()->create([
+        $video->videoMetadata()->create([
             'platform' => 'youtube_shorts',
             'title' => 'The Map That Should Not Exist',
             'description' => "Mira completes her grandfather's unfinished map — and finds the city no chart ever recorded.",
         ]);
 
         $this->actingAs($this->owner)
-            ->get(route('render.show', $project))
+            ->get(route('render.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -106,10 +108,11 @@ class VideoMetadataTest extends TestCase
 
     public function test_the_metadata_section_is_empty_before_anything_is_saved(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
         $this->actingAs($this->owner)
-            ->get(route('render.show', $project))
+            ->get(route('render.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -121,33 +124,34 @@ class VideoMetadataTest extends TestCase
 
     public function test_owner_can_save_and_retrieve_metadata(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
         $this->actingAs($this->owner)
-            ->patch(route('render.metadata.update', $project), [
+            ->patch(route('render.metadata.update', [$project, $video]), [
                 'platform' => 'facebook_reels',
                 'title' => 'The Lost Cartographer',
                 'description' => "A young mapmaker follows her grandfather's last coordinate into a hidden valley city.",
             ])
-            ->assertRedirect(route('render.show', $project));
+            ->assertRedirect(route('render.show', [$project, $video]));
 
         $metadata = VideoMetadata::query()->sole();
 
         $this->assertSame('facebook_reels', $metadata->platform->value);
         $this->assertSame('The Lost Cartographer', $metadata->title);
-        $this->assertSame($this->owner->id, $metadata->project->user_id);
+        $this->assertSame($this->owner->id, $metadata->video->project->user_id);
 
         // An explicit second save overwrites (generation never does).
-        $this->patch(route('render.metadata.update', $project), [
+        $this->patch(route('render.metadata.update', [$project, $video]), [
             'platform' => 'both',
             'title' => 'The Map That Should Not Exist',
             'description' => 'She finished the map. She was not ready for what it showed.',
-        ])->assertRedirect(route('render.show', $project));
+        ])->assertRedirect(route('render.show', [$project, $video]));
 
         $this->assertSame(1, VideoMetadata::query()->count());
         $this->assertSame('both', VideoMetadata::query()->sole()->platform->value);
 
-        $this->get(route('render.show', $project))
+        $this->get(route('render.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -158,10 +162,11 @@ class VideoMetadataTest extends TestCase
 
     public function test_save_validates_platform_title_and_description(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
         $this->actingAs($this->owner)
-            ->patch(route('render.metadata.update', $project), [
+            ->patch(route('render.metadata.update', [$project, $video]), [
                 'platform' => 'tiktok',
                 'title' => '',
                 'description' => str_repeat('x', 2201),
@@ -173,20 +178,21 @@ class VideoMetadataTest extends TestCase
 
     public function test_intruders_cannot_read_or_modify_metadata(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
-        $project->videoMetadata()->create([
+        $video->videoMetadata()->create([
             'platform' => 'both',
             'title' => 'Owner title',
             'description' => 'Owner description.',
         ]);
 
         $this->actingAs($this->intruder)
-            ->get(route('render.show', $project))
+            ->get(route('render.show', [$project, $video]))
             ->assertForbidden();
 
         $this->actingAs($this->intruder)
-            ->patch(route('render.metadata.update', $project), [
+            ->patch(route('render.metadata.update', [$project, $video]), [
                 'platform' => 'both',
                 'title' => 'Hijacked title',
                 'description' => 'Hijacked description.',
@@ -200,13 +206,14 @@ class VideoMetadataTest extends TestCase
 
     public function test_generation_uses_the_configured_provider_and_flashes_for_review(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
         $this->fakeTextDefault();
 
         $response = $this->actingAs($this->owner)
-            ->post(route('render.metadata.generate', $project), ['platform' => 'both']);
+            ->post(route('render.metadata.generate', [$project, $video]), ['platform' => 'both']);
 
-        $response->assertRedirect(route('render.show', $project));
+        $response->assertRedirect(route('render.show', [$project, $video]));
 
         $response->assertSessionHas('generated_metadata', fn (array $flash): bool => $flash['platform'] === 'both'
             && $flash['title'] === 'The Night the Painted Panels Came Alive'
@@ -229,11 +236,12 @@ class VideoMetadataTest extends TestCase
 
     public function test_generation_validates_the_platform(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
         $this->fakeTextDefault();
 
         $this->actingAs($this->owner)
-            ->post(route('render.metadata.generate', $project), ['platform' => 'tiktok'])
+            ->post(route('render.metadata.generate', [$project, $video]), ['platform' => 'tiktok'])
             ->assertSessionHasErrors('platform');
 
         $this->assertSame(0, ProviderCall::query()->count());
@@ -244,10 +252,11 @@ class VideoMetadataTest extends TestCase
         Sleep::fake();
         config(['ai.retry.jitter_ratio' => 0.0]);
 
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
         $this->fakeTextDefault();
 
-        $project->videoMetadata()->create([
+        $video->videoMetadata()->create([
             'platform' => 'youtube_shorts',
             'title' => 'Saved before failure',
             'description' => 'Unchanged description.',
@@ -256,13 +265,13 @@ class VideoMetadataTest extends TestCase
         app(FakeProviderScenario::class)->failRequest(500);
 
         $this->actingAs($this->owner)
-            ->post(route('render.metadata.generate', $project), ['platform' => 'both'])
+            ->post(route('render.metadata.generate', [$project, $video]), ['platform' => 'both'])
             ->assertSessionHasErrors('metadata');
 
         // The completed render is untouched: video asset still published,
         // render history intact, saved metadata unchanged.
         $this->actingAs($this->owner)
-            ->get(route('render.show', $project))
+            ->get(route('render.show', [$project, $video]))
             ->assertOk()
             ->assertInertia(
                 fn (InertiaAssert $page) => $page
@@ -279,12 +288,13 @@ class VideoMetadataTest extends TestCase
 
     public function test_metadata_endpoints_require_an_authenticated_user(): void
     {
-        $project = $this->completedRenderProject();
+        $video = $this->completedRenderProject();
+        $project = $video->project;
 
-        $this->post(route('render.metadata.generate', $project), ['platform' => 'both'])
+        $this->post(route('render.metadata.generate', [$project, $video]), ['platform' => 'both'])
             ->assertRedirect(route('login'));
 
-        $this->patch(route('render.metadata.update', $project), [
+        $this->patch(route('render.metadata.update', [$project, $video]), [
             'platform' => 'both',
             'title' => 't',
             'description' => 'd',

@@ -15,6 +15,7 @@ use App\Models\Project;
 use App\Models\ProviderCall;
 use App\Models\Story;
 use App\Models\User;
+use App\Models\Video;
 use Database\Factories\ProviderSettingsFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -31,6 +32,8 @@ class StoryGenerationTest extends TestCase
 
     private Project $project;
 
+    private Video $video;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -41,6 +44,7 @@ class StoryGenerationTest extends TestCase
 
         $this->user = User::factory()->create();
         $this->project = Project::factory()->for($this->user)->create();
+        $this->video = $this->makeVideo($this->project);
 
         $this->actingAs($this->user);
     }
@@ -58,13 +62,13 @@ class StoryGenerationTest extends TestCase
     {
         $this->fakeTextDefault();
 
-        $response = $this->post(route('story.generate', $this->project), [
+        $response = $this->post(route('story.generate', [$this->project, $this->video]), [
             'story_idea' => 'A robot that paints at night',
         ]);
 
         $response->assertRedirect();
 
-        $story = $this->project->fresh()->story;
+        $story = $this->video->fresh()->story;
 
         $this->assertNotNull($story);
         $this->assertSame(StoryStatus::Ready, $story->status);
@@ -73,13 +77,15 @@ class StoryGenerationTest extends TestCase
         $this->assertSame('fake', $story->generation_meta['provider']);
         $this->assertSame('fake-text-1', $story->generation_meta['model']);
 
-        $this->project->refresh();
-        $this->assertSame(ProjectStatus::StoryReady, $this->project->status);
+        $this->video->refresh();
+        $this->assertSame(ProjectStatus::StoryReady, $this->video->status);
+        $this->assertSame(ProjectStatus::StoryReady, $this->project->refresh()->status);
 
         $job = GenerationJob::query()->sole();
 
         $this->assertSame(GenerationJobType::StoryGeneration, $job->type);
         $this->assertSame(GenerationJobStatus::Succeeded, $job->status);
+        $this->assertSame($this->video->id, $job->video_id);
         $this->assertSame(1, $job->attempts);
         $this->assertSame('A robot that paints at night', $job->payload['story_idea']);
         $this->assertSame($story->id, $job->result['story_id']);
@@ -94,6 +100,7 @@ class StoryGenerationTest extends TestCase
         $this->assertSame('fake-text-1', $call->model);
         $this->assertSame(ProviderCallStatus::Success, $call->status);
         $this->assertSame($job->id, $call->generation_job_id);
+        $this->assertSame($this->video->id, $call->video_id);
         $this->assertSame($this->project->id, $call->project_id);
         $this->assertSame(42, $call->input_tokens);
         $this->assertSame(1337, $call->output_tokens);
@@ -106,16 +113,16 @@ class StoryGenerationTest extends TestCase
 
         auth()->logout();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'An idea long enough'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'An idea long enough'])
             ->assertRedirect(route('login'));
 
         $stranger = User::factory()->create();
         $this->actingAs($stranger)
-            ->post(route('story.generate', $this->project), ['story_idea' => 'An idea long enough'])
+            ->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'An idea long enough'])
             ->assertForbidden();
 
         $this->assertSame(0, GenerationJob::count());
-        $this->assertNull($this->project->fresh()->story);
+        $this->assertNull($this->video->fresh()->story);
     }
 
     public function test_story_idea_is_validated(): void
@@ -123,7 +130,7 @@ class StoryGenerationTest extends TestCase
         $this->fakeTextDefault();
 
         $this->from('/nowhere')
-            ->post(route('story.generate', $this->project), ['story_idea' => 'short'])
+            ->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'short'])
             ->assertSessionHasErrors('story_idea');
 
         $this->assertSame(0, GenerationJob::count());
@@ -135,11 +142,11 @@ class StoryGenerationTest extends TestCase
 
         Queue::fake();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night'])
             ->assertRedirect();
 
         $this->from('/nowhere')
-            ->post(route('story.generate', $this->project), ['story_idea' => 'Another story idea'])
+            ->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'Another story idea'])
             ->assertSessionHasErrors('story_idea');
 
         $this->assertSame(1, GenerationJob::count());
@@ -150,7 +157,7 @@ class StoryGenerationTest extends TestCase
     {
         config(['ai.env.text' => ['provider' => null, 'model' => null, 'api_key' => null]]);
 
-        $response = $this->post(route('story.generate', $this->project), [
+        $response = $this->post(route('story.generate', [$this->project, $this->video]), [
             'story_idea' => 'A robot that paints at night',
         ]);
 
@@ -163,7 +170,7 @@ class StoryGenerationTest extends TestCase
         $this->assertStringContainsString('No text provider is configured', (string) $job->error_message);
         $this->assertSame(ProviderConfigurationException::class, $job->error_class);
 
-        $story = $this->project->fresh()->story;
+        $story = $this->video->fresh()->story;
         $this->assertSame(StoryStatus::Failed, $story->status);
         $this->assertSame('', $story->full_text);
 
@@ -175,7 +182,7 @@ class StoryGenerationTest extends TestCase
         $this->fakeTextDefault();
         app(FakeProviderScenario::class)->failRateLimit(1);
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night'])
             ->assertRedirect();
 
         $job = GenerationJob::query()->sole();
@@ -191,7 +198,7 @@ class StoryGenerationTest extends TestCase
             $this->assertSame(429, $call->http_status);
         });
 
-        $this->assertSame(StoryStatus::Failed, $this->project->fresh()->story->status);
+        $this->assertSame(StoryStatus::Failed, $this->video->fresh()->story->status);
     }
 
     public function test_timeout_failure_exhausts_attempts_and_fails(): void
@@ -199,7 +206,7 @@ class StoryGenerationTest extends TestCase
         $this->fakeTextDefault();
         app(FakeProviderScenario::class)->failTimeout();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night'])
             ->assertRedirect();
 
         $job = GenerationJob::query()->sole();
@@ -214,7 +221,7 @@ class StoryGenerationTest extends TestCase
 
     public function test_malformed_output_fails_without_retry_and_keeps_previous_story_content(): void
     {
-        $original = Story::factory()->for($this->project)->create([
+        $original = Story::factory()->for($this->video)->create([
             'title' => 'Original title',
             'full_text' => 'Original content.',
             'status' => StoryStatus::Ready,
@@ -223,7 +230,7 @@ class StoryGenerationTest extends TestCase
         $this->fakeTextDefault();
         app(FakeProviderScenario::class)->failMalformed();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night'])
             ->assertRedirect();
 
         $job = GenerationJob::query()->sole();
@@ -233,7 +240,7 @@ class StoryGenerationTest extends TestCase
         $this->assertSame(1, ProviderCall::count());
         $this->assertStringContainsString('schema validation', (string) $job->error_message);
 
-        $story = $this->project->fresh()->story;
+        $story = $this->video->fresh()->story;
 
         $this->assertSame($original->id, $story->id);
         $this->assertSame('Original title', $story->title);
@@ -256,7 +263,7 @@ class StoryGenerationTest extends TestCase
             ),
         ]);
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night'])
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night'])
             ->assertRedirect();
 
         $job = GenerationJob::query()->sole();
@@ -268,7 +275,7 @@ class StoryGenerationTest extends TestCase
             $this->assertStringNotContainsString('sk-supersecret-4242', (string) $call->error_message);
         });
 
-        $page = $this->get(route('story.edit', $this->project));
+        $page = $this->get(route('story.edit', [$this->project, $this->video]));
 
         $page->assertOk();
         $this->assertStringNotContainsString('sk-supersecret-4242', $page->getContent());
@@ -283,9 +290,9 @@ class StoryGenerationTest extends TestCase
         // so a fresh visit/refresh shows title, logline and full text.
         $this->fakeTextDefault();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night']);
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night']);
 
-        $this->get(route('story.edit', $this->project))->assertInertia(
+        $this->get(route('story.edit', [$this->project, $this->video]))->assertInertia(
             fn (InertiaAssert $page) => $page
                 ->component('Story/Edit')
                 ->where('story.title', 'The Deterministic Robot')
@@ -300,18 +307,18 @@ class StoryGenerationTest extends TestCase
     {
         $this->fakeTextDefault();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night']);
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night']);
 
         $this->actingAs($this->user)
-            ->from(route('story.edit', $this->project))
-            ->put(route('story.save', $this->project), [
+            ->from(route('story.edit', [$this->project, $this->video]))
+            ->put(route('story.save', [$this->project, $this->video]), [
                 'title' => 'Edited Title',
                 'logline' => 'Edited logline.',
                 'full_text' => 'Edited full story text.',
             ])
-            ->assertRedirect(route('story.edit', $this->project));
+            ->assertRedirect(route('story.edit', [$this->project, $this->video]));
 
-        $story = $this->project->fresh()->story;
+        $story = $this->video->fresh()->story;
 
         $this->assertSame('Edited Title', $story->title);
         $this->assertSame('Edited logline.', $story->logline);
@@ -323,9 +330,9 @@ class StoryGenerationTest extends TestCase
     {
         $this->fakeTextDefault();
 
-        $this->post(route('story.generate', $this->project), ['story_idea' => 'A robot that paints at night']);
+        $this->post(route('story.generate', [$this->project, $this->video]), ['story_idea' => 'A robot that paints at night']);
 
-        $response = $this->get(route('story.edit', $this->project));
+        $response = $this->get(route('story.edit', [$this->project, $this->video]));
 
         $response->assertOk();
         $response->assertSee('The Deterministic Robot');

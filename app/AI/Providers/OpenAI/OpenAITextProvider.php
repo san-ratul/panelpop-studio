@@ -8,14 +8,18 @@ use App\AI\Exceptions\ProviderConfigurationException;
 use App\AI\Exceptions\ProviderRateLimitException;
 use App\AI\Exceptions\ProviderRequestException;
 use App\AI\Http\ProviderHttpClient;
+use App\AI\Inputs\DialogueVoiceAssignmentBrief;
 use App\AI\Inputs\ScenePlanConstraints;
 use App\AI\Inputs\StoryBrief;
 use App\AI\Inputs\VideoMetadataBrief;
+use App\AI\Prompts\DialogueVoiceAssignmentPromptBuilder;
 use App\AI\Prompts\StoryPromptBuilder;
 use App\AI\Prompts\VideoMetadataPromptBuilder;
 use App\AI\ResolvedProvider;
+use App\AI\Results\DialogueVoiceAssignments;
 use App\AI\Results\PlannedDialogueLine;
 use App\AI\Results\PlannedScene;
+use App\AI\Results\PlannedVoiceAssignment;
 use App\AI\Results\ProviderUsage;
 use App\AI\Results\ScenePlan;
 use App\AI\Results\StoryDraft;
@@ -44,11 +48,14 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
 
     private const FORMAT_NAME_METADATA = 'video_metadata';
 
+    private const FORMAT_NAME_VOICE_ASSIGNMENT = 'dialogue_voice_assignment';
+
     private ?ResolvedProvider $resolved = null;
 
     public function __construct(
         private readonly StoryPromptBuilder $prompts,
         private readonly VideoMetadataPromptBuilder $metadataPrompts,
+        private readonly DialogueVoiceAssignmentPromptBuilder $assignmentPrompts,
         private readonly ProviderHttpClient $client,
     ) {}
 
@@ -110,9 +117,12 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
                     static fn (array $line): PlannedDialogueLine => new PlannedDialogueLine(
                         $line['character_name'],
                         $line['text'],
+                        $line['emotion'] ?? null,
+                        $line['voice_instructions'] ?? null,
                     ),
                     $scene['dialogue'],
                 ),
+                narrationVoiceInstructions: $scene['narration_voice_instructions'] ?? null,
             ),
             $plan['scenes'],
         );
@@ -150,6 +160,38 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
             usage: $this->usageFrom($response),
             costActual: null,
             meta: $this->meta($response, 'video_metadata'),
+        );
+    }
+
+    public function assignDialogueVoices(DialogueVoiceAssignmentBrief $brief): DialogueVoiceAssignments
+    {
+        $messages = $this->assignmentPrompts->messages($brief);
+
+        $body = $this->requestBody(
+            $messages,
+            OpenAISchemas::dialogueVoiceAssignment(),
+            self::FORMAT_NAME_VOICE_ASSIGNMENT,
+            $this->option('max_output_tokens_metadata'),
+        );
+
+        $response = $this->send($body);
+
+        $payload = $this->decodeStructured($this->outputText($response));
+        $assignments = OpenAIPayloadValidator::dialogueVoiceAssignment($payload);
+
+        return new DialogueVoiceAssignments(
+            assignments: array_map(
+                static fn (array $assignment): PlannedVoiceAssignment => new PlannedVoiceAssignment(
+                    lineId: $assignment['line_id'],
+                    speakerName: $assignment['speaker'],
+                    emotion: $assignment['emotion'],
+                    voiceInstructions: $assignment['voice_instructions'],
+                ),
+                $assignments,
+            ),
+            usage: $this->usageFrom($response),
+            costActual: null,
+            meta: $this->meta($response, 'voice_assignment'),
         );
     }
 

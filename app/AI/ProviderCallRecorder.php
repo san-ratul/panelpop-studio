@@ -12,6 +12,7 @@ final class ProviderCallRecorder
         return DB::transaction(fn (): ProviderCall => ProviderCall::create([
             'generation_job_id' => $record->generationJobId,
             'project_id' => $record->projectId,
+            'video_id' => $record->videoId,
             'user_id' => $record->userId,
             'capability' => $record->capability,
             'operation' => $record->operation?->value,

@@ -18,6 +18,7 @@ final class RenderPlan
      */
     public function __construct(
         public readonly int $projectId,
+        public readonly int $videoId,
         public readonly string $presentationMode,
         public readonly array $scenes,
         public readonly array $musicAssets,
@@ -46,7 +47,7 @@ final class RenderPlan
         return $this->musicAssets !== [] || $this->sfxAssets !== [];
     }
 
-    /** Σ scene durations — the render's target duration. */
+    /** Sum of scene durations — the render's target duration. */
     public function totalDuration(): float
     {
         return array_sum(array_map(

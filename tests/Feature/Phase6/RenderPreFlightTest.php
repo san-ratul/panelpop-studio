@@ -11,6 +11,7 @@ use App\Models\AudioLicence;
 use App\Models\Project;
 use App\Models\Scene;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\AudioLicenceGate;
 use App\Services\Render\BinaryProbe;
 use App\Services\Render\ProcessResult;
@@ -65,16 +66,16 @@ class RenderPreFlightTest extends TestCase
         A....D aac                  AAC (Advanced Audio Coding)
         TEXT;
 
-    private function build(Project $project, ?float $minFreeDiskMb = null): object
+    private function build(Video $video, ?float $minFreeDiskMb = null): object
     {
-        return $this->builder->build($project, $minFreeDiskMb);
+        return $this->builder->build($video, $minFreeDiskMb);
     }
 
     public function test_a_ready_project_builds_an_ordered_plan(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
-        $plan = $this->build($project);
+        $plan = $this->build($video);
 
         $this->assertSame(2, count($plan->scenes));
         $this->assertSame([1, 2], array_map(static fn ($s): int => $s->number, $plan->scenes));
@@ -87,12 +88,12 @@ class RenderPreFlightTest extends TestCase
 
     public function test_silent_project_plans_without_any_audio(): void
     {
-        $project = $this->createRenderableProject($this->user, 'silent', [
+        $video = $this->createRenderableProject($this->user, 'silent', [
             1 => ['narration' => 'Unused text.', 'narration_duration_ms' => 4000],
             2 => ['narration' => null],
         ]);
 
-        $plan = $this->build($project);
+        $plan = $this->build($video);
 
         $this->assertFalse($plan->hasAudio());
         $this->assertNull($plan->scenes[0]->narrationAudio);
@@ -100,13 +101,13 @@ class RenderPreFlightTest extends TestCase
 
     public function test_draft_project_cannot_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
-        $project->update(['status' => 'draft']);
+        $video = $this->createRenderableProject($this->user);
+        $video->update(['status' => 'draft']);
 
         $this->expectException(RenderPreFlightException::class);
         $this->expectExceptionMessage('Complete the storyboard first');
 
-        $this->build($project);
+        $this->build($video);
     }
 
     public function test_project_without_scenes_cannot_render(): void
@@ -120,8 +121,14 @@ class RenderPreFlightTest extends TestCase
             'status' => 'planned',
         ]);
 
+        $video = $this->makeVideo($project, [
+            'title' => 'Empty video',
+            'status' => 'planned',
+            'target_duration_seconds' => 30,
+        ]);
+
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertStringContainsString('no scenes yet', $exception->getMessage());
@@ -130,16 +137,16 @@ class RenderPreFlightTest extends TestCase
 
     public function test_duration_sum_outside_tolerance_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user, scenes: [
+        $video = $this->createRenderableProject($this->user, scenes: [
             1 => ['narration' => 'A.', 'narration_duration_ms' => 4000],
             2 => ['narration' => 'B.', 'narration_duration_ms' => 4000],
         ], target: 60);
 
         // 2 × 30 = 60 would fit; 20 + 20 = 40 is outside ±2 of the target.
-        $project->scenes()->update(['duration_seconds' => 20]);
+        $video->scenes()->update(['duration_seconds' => 20]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a duration failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -150,15 +157,15 @@ class RenderPreFlightTest extends TestCase
 
     public function test_scene_without_a_generated_image_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user, scenes: [
+        $video = $this->createRenderableProject($this->user, scenes: [
             1 => ['narration' => null],
             2 => ['narration' => null],
         ]);
 
-        $project->scenes()->where('number', 2)->update(['image_asset_id' => null, 'status' => 'pending']);
+        $video->scenes()->where('number', 2)->update(['image_asset_id' => null, 'status' => 'pending']);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -169,13 +176,13 @@ class RenderPreFlightTest extends TestCase
 
     public function test_missing_image_file_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
-        $image = $project->scenes()->first()->imageAsset;
+        $image = $video->scenes()->first()->imageAsset;
         Storage::disk('media-private')->delete($image->path);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -186,13 +193,13 @@ class RenderPreFlightTest extends TestCase
 
     public function test_corrupt_image_bytes_block_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
-        $image = $project->scenes()->first()->imageAsset;
+        $image = $video->scenes()->first()->imageAsset;
         Storage::disk('media-private')->put($image->path, 'definitely not a png');
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -203,13 +210,13 @@ class RenderPreFlightTest extends TestCase
 
     public function test_narrator_scene_with_text_but_no_audio_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user, scenes: [
+        $video = $this->createRenderableProject($this->user, scenes: [
             1 => ['narration' => 'Spoken.', 'narration_duration_ms' => 4000],
             2 => ['narration' => 'Missing audio.'],
         ]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -220,7 +227,7 @@ class RenderPreFlightTest extends TestCase
 
     public function test_dialogue_scene_with_a_line_without_audio_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user, 'dialogue', [
+        $video = $this->createRenderableProject($this->user, 'dialogue', [
             1 => [
                 'narration' => null,
                 'dialogue' => [['text' => 'Unvoiced line', 'duration_ms' => null]],
@@ -228,7 +235,7 @@ class RenderPreFlightTest extends TestCase
         ]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a pre-flight failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -239,7 +246,8 @@ class RenderPreFlightTest extends TestCase
 
     public function test_unverified_music_blocks_the_render_at_the_gate(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
         $music = $this->storeMusicFixture($project, 'unverified.mp3');
         AudioLicence::query()->create([
@@ -251,7 +259,7 @@ class RenderPreFlightTest extends TestCase
         ]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected the licence gate to block the render.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -262,7 +270,8 @@ class RenderPreFlightTest extends TestCase
 
     public function test_music_without_required_uses_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
         $music = $this->storeMusicFixture($project, 'partial.mp3');
         AudioLicence::query()->create([
@@ -276,7 +285,7 @@ class RenderPreFlightTest extends TestCase
         ]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected the licence gate to block the render.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -287,7 +296,8 @@ class RenderPreFlightTest extends TestCase
 
     public function test_verified_music_is_included_in_the_plan(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
         $music = $this->storeMusicFixture($project, 'licensed.mp3');
         AudioLicence::query()->create([
@@ -300,7 +310,7 @@ class RenderPreFlightTest extends TestCase
             'evidence' => [['url' => 'https://example.com/licence', 'quote' => 'commercial use permitted']],
         ]);
 
-        $plan = $this->build($project);
+        $plan = $this->build($video);
 
         $this->assertCount(1, $plan->musicAssets);
         $this->assertSame($music->path, $plan->musicAssets[0]->path);
@@ -310,16 +320,16 @@ class RenderPreFlightTest extends TestCase
     {
         // Narration (12 s) inside a 10 s scene plus measured filler scenes →
         // the R-10 overrun must surface as a render warning, not a block.
-        $project = $this->createRenderableProject($this->user, scenes: [
+        $video = $this->createRenderableProject($this->user, scenes: [
             1 => ['narration' => 'Long narration.', 'narration_duration_ms' => 12000],
         ], target: 30);
 
-        $project->scenes()->update(['duration_seconds' => 10]);
+        $video->scenes()->update(['duration_seconds' => 10]);
 
-        $this->addFillerScene($project, 2);
-        $this->addFillerScene($project, 3);
+        $this->addFillerScene($video, 2);
+        $this->addFillerScene($video, 3);
 
-        $plan = $this->build($project);
+        $plan = $this->build($video);
 
         $this->assertNotEmpty($plan->warnings);
     }
@@ -330,10 +340,10 @@ class RenderPreFlightTest extends TestCase
 
         $builder = new RenderPlanBuilder(new AudioLicenceGate, new BinaryProbe(new FakeProcessRunner));
 
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
         try {
-            $builder->build($project);
+            $builder->build($video);
             $this->fail('Expected a binary configuration failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -348,10 +358,10 @@ class RenderPreFlightTest extends TestCase
 
         $builder = new RenderPlanBuilder(new AudioLicenceGate, new BinaryProbe(new FakeProcessRunner));
 
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
         try {
-            $builder->build($project);
+            $builder->build($video);
             $this->fail('Expected a binary configuration failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -362,9 +372,9 @@ class RenderPreFlightTest extends TestCase
 
     public function test_an_active_render_job_blocks_a_duplicate_launch(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
-        $project->generationJobs()->create([
+        $video->generationJobs()->create([
             'type' => 'video_render',
             'status' => 'running',
             'attempts' => 1,
@@ -373,7 +383,7 @@ class RenderPreFlightTest extends TestCase
         ]);
 
         try {
-            $this->build($project);
+            $this->build($video);
             $this->fail('Expected a duplicate-launch failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -384,10 +394,10 @@ class RenderPreFlightTest extends TestCase
 
     public function test_disk_space_shortage_blocks_the_render(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
 
         try {
-            $this->build($project, 999_999_999.0);
+            $this->build($video, 999_999_999.0);
             $this->fail('Expected a disk-space failure.');
         } catch (RenderPreFlightException $exception) {
             $this->assertTrue(collect($exception->messages)->contains(
@@ -398,7 +408,8 @@ class RenderPreFlightTest extends TestCase
 
     public function test_an_inaccessible_music_asset_is_excluded_from_the_plan(): void
     {
-        $project = $this->createRenderableProject($this->user);
+        $video = $this->createRenderableProject($this->user);
+        $project = $video->project;
 
         $music = $this->storeMusicFixture($project, 'licensed.mp3');
         AudioLicence::query()->create([
@@ -413,7 +424,7 @@ class RenderPreFlightTest extends TestCase
 
         Storage::disk('media-private')->delete($music->path);
 
-        $plan = $this->build($project);
+        $plan = $this->build($video);
 
         $this->assertSame([], $plan->musicAssets);
     }
@@ -440,14 +451,15 @@ class RenderPreFlightTest extends TestCase
         ]);
     }
 
-    private function addFillerScene(Project $project, int $number): void
+    private function addFillerScene(Video $video, int $number): void
     {
         $image = $this->fixturePng();
         $path = 'fixtures/images/filler-'.$number.'-'.strtolower(Str::ulid()->toBase32()).'.png';
         Storage::disk('media-private')->put($path, $image);
 
         $asset = Asset::query()->create([
-            'project_id' => $project->id,
+            'project_id' => $video->project_id,
+            'video_id' => $video->id,
             'type' => AssetType::SceneImage,
             'disk' => 'media-private',
             'path' => $path,
@@ -456,7 +468,7 @@ class RenderPreFlightTest extends TestCase
             'status' => AssetStatus::Ready,
         ]);
 
-        Scene::factory()->for($project)->create([
+        Scene::factory()->for($video)->create([
             'number' => $number,
             'duration_seconds' => 10,
             'narration_text' => null,
