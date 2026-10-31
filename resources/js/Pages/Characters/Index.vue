@@ -183,10 +183,10 @@ if (props.referenceJobActive) {
                 </p>
             </div>
             <Link
-                :href="route('storyboard.show', project.id)"
+                :href="route('videos.index', project.id)"
                 class="text-sm text-indigo-600 hover:text-indigo-800"
             >
-                Go to storyboard
+                Back to videos
             </Link>
         </div>
 

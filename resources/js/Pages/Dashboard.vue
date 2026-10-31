@@ -176,12 +176,6 @@ function formatDate(iso) {
                         Characters
                     </Link>
                     <Link
-                        :href="route('storyboard.show', project.id)"
-                        class="font-medium text-indigo-600 hover:text-indigo-800"
-                    >
-                        Storyboard
-                    </Link>
-                    <Link
                         :href="route('projects.edit', project.id)"
                         class="ml-auto font-medium text-gray-500 hover:text-gray-700"
                     >
