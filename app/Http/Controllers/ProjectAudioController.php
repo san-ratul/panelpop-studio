@@ -98,7 +98,7 @@ class ProjectAudioController extends Controller
                 && isset($project->settings['narration_voice_config']),
             'voiceGroups' => VoiceCatalog::voiceGroups(),
             'stylePresets' => VoiceCatalog::stylePresets(),
-            'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
+            'defaultVoice' => VoiceCatalog::defaultVoice(),
             'hasReadyStory' => ($video->story?->status ?? null) === StoryStatus::Ready,
         ]);
     }

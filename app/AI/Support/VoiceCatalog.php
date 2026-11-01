@@ -23,6 +23,36 @@ namespace App\AI\Support;
 final class VoiceCatalog
 {
     /**
+     * Presentation metadata for the Replicate (MiniMax speech-02-turbo)
+     * system voice_ids offered in config/ai.php. HONESTY: these are
+     * system-voice NAMES, not verified performances — the youthful-leaning
+     * voices are labeled "youthful (system voice)" and their actual
+     * child-likeness must be confirmed with real samples (staging) before
+     * the product may call any of them a child voice.
+     *
+     * @var array<string, array{group: string, label: string}>
+     */
+    private const REPLICATE_VOICE_META = [
+        'English_PlayfulGirl' => ['group' => 'female', 'label' => 'Playful Girl — youthful girl (system voice, unverified)'],
+        'English_LovelyGirl' => ['group' => 'female', 'label' => 'Lovely Girl — youthful girl (system voice, unverified)'],
+        'English_WhimsicalGirl' => ['group' => 'female', 'label' => 'Whimsical Girl — youthful girl (system voice, unverified)'],
+        'English_Soft-spokenGirl' => ['group' => 'female', 'label' => 'Soft-spoken Girl — youthful girl (system voice, unverified)'],
+        'English_Kind-heartedGirl' => ['group' => 'female', 'label' => 'Kind-hearted Girl — youthful girl (system voice, unverified)'],
+        'English_UpsetGirl' => ['group' => 'female', 'label' => 'Upset Girl — youthful girl (system voice, unverified)'],
+        'English_SadTeen' => ['group' => 'female', 'label' => 'Sad Teen — teenage girl (system voice, unverified)'],
+        'English_Strong-WilledBoy' => ['group' => 'male', 'label' => 'Strong-Willed Boy — youthful boy (system voice, unverified)'],
+        'English_DecentYoungMan' => ['group' => 'male', 'label' => 'Decent Young Man — youthful boy (system voice, unverified)'],
+        'English_ReservedYoungMan' => ['group' => 'male', 'label' => 'Reserved Young Man — youthful boy (system voice, unverified)'],
+        'English_AnimeCharacter' => ['group' => 'neutral', 'label' => 'Anime Character — cartoonish, youthful-leaning (system voice, unverified)'],
+        'English_CaptivatingStoryteller' => ['group' => 'neutral', 'label' => 'Captivating Storyteller — adult narrator'],
+        'English_WiseScholar' => ['group' => 'male', 'label' => 'Wise Scholar — adult narrator'],
+        'English_CalmWoman' => ['group' => 'female', 'label' => 'Calm Woman — adult'],
+        'English_FriendlyPerson' => ['group' => 'neutral', 'label' => 'Friendly Person — adult'],
+        'English_PatientMan' => ['group' => 'male', 'label' => 'Patient Man — adult'],
+        'English_Wiselady' => ['group' => 'female', 'label' => 'Wise Lady — adult'],
+    ];
+
+    /**
      * Presentation metadata per documented voice id.
      *
      * @var array<string, array{group: string, label: string}>
@@ -66,18 +96,60 @@ final class VoiceCatalog
 
     /**
      * Voice options grouped for the UI (female / male / neutral / other),
-     * restricted to the voices configured in config/ai.php. Empty groups
-     * are omitted.
+     * restricted to the voices configured in config/ai.php. Provider-aware:
+     * the configured TTS provider decides which catalog is offered (OpenAI
+     * built-ins vs Replicate/MiniMax system voice_ids). Empty groups are
+     * omitted.
      *
      * @return list<array{label: string, options: list<array{value: string, label: string}>}>
      */
     public static function voiceGroups(): array
     {
+        $provider = (string) config('ai.env.tts.provider');
+
+        if ($provider === 'replicate') {
+            $configured = array_values(array_filter(
+                (array) config('ai.replicate.tts.voices', []),
+                static fn (mixed $voice): bool => is_string($voice) && trim($voice) !== '',
+            ));
+
+            return self::groupVoices($configured, self::REPLICATE_VOICE_META);
+        }
+
         $configured = array_values(array_filter(
             (array) config('ai.openai.tts.voices', []),
             static fn (mixed $voice): bool => is_string($voice) && trim($voice) !== '',
         ));
 
+        return self::groupVoices($configured, self::VOICE_META);
+    }
+
+    /**
+     * Default voice id for the CONFIGURED TTS provider.
+     */
+    public static function defaultVoice(): string
+    {
+        if ((string) config('ai.env.tts.provider') === 'replicate') {
+            $default = config('ai.replicate.tts.default_voice');
+
+            return is_string($default) && $default !== '' ? $default : '';
+        }
+
+        $default = config('ai.openai.tts.default_voice');
+
+        return is_string($default) && $default !== '' ? $default : '';
+    }
+
+    /**
+     * Groups a configured voice-id list with presentation metadata; voices
+     * missing from the metadata map land under "Other voices".
+     *
+     * @param  list<string>  $configured
+     * @param  array<string, array{group: string, label: string}>  $meta
+     * @return list<array{label: string, options: list<array{value: string, label: string}>}>
+     */
+    private static function groupVoices(array $configured, array $meta): array
+    {
         $buckets = [
             'female' => [],
             'male' => [],
@@ -86,15 +158,15 @@ final class VoiceCatalog
         $other = [];
 
         foreach ($configured as $voice) {
-            $meta = self::VOICE_META[$voice] ?? null;
+            $voiceMeta = $meta[$voice] ?? null;
 
-            if ($meta === null) {
-                $other[] = ['value' => $voice, 'label' => ucfirst($voice)];
+            if ($voiceMeta === null) {
+                $other[] = ['value' => $voice, 'label' => ucfirst(str_replace('_', ' ', $voice))];
 
                 continue;
             }
 
-            $buckets[$meta['group']][] = ['value' => $voice, 'label' => $meta['label']];
+            $buckets[$voiceMeta['group']][] = ['value' => $voice, 'label' => $voiceMeta['label']];
         }
 
         $labels = [

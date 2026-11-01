@@ -10,6 +10,9 @@ use App\AI\Providers\OpenAI\OpenAICostEstimator;
 use App\AI\Providers\OpenAI\OpenAIImageProvider;
 use App\AI\Providers\OpenAI\OpenAITextProvider;
 use App\AI\Providers\OpenAI\OpenAITtsProvider;
+use App\AI\Providers\Replicate\ReplicateCostEstimator;
+use App\AI\Providers\Replicate\ReplicateTtsProvider;
+use App\AI\Providers\Replicate\ReplicateVideoProvider;
 use App\AI\Providers\Runway\RunwayCostEstimator;
 use App\AI\Providers\Runway\RunwayVideoProvider;
 
@@ -106,6 +109,21 @@ return [
                 'video' => RunwayVideoProvider::class,
             ],
         ],
+        'replicate' => [
+            // Replicate hosted predictions (VERIFIED 2026-11-01 against
+            // replicate.com official model pages and the prediction API
+            // docs): async predictions with pinned versions, image+audio
+            // data-URI inputs, output files deleted after ~1 hour (the
+            // pipeline downloads immediately), per-output USD pricing.
+            // Primary scene-video + youthful-voice provider; see
+            // .docs/VIDEO_GENERATION_AI.md and .docs/VOICE_WORKFLOW.md.
+            'label' => 'Replicate',
+            'capabilities' => ['video', 'tts'],
+            'adapters' => [
+                'video' => ReplicateVideoProvider::class,
+                'tts' => ReplicateTtsProvider::class,
+            ],
+        ],
         'fake' => [
             'label' => 'Deterministic fake (testing only)',
             'test_only' => true,
@@ -123,6 +141,7 @@ return [
     'estimators' => [
         'openai' => OpenAICostEstimator::class,
         'runway' => RunwayCostEstimator::class,
+        'replicate' => ReplicateCostEstimator::class,
         'fake' => FakeCostEstimator::class,
     ],
 
@@ -352,5 +371,160 @@ return [
         // Maximum scene duration a single clip must cover (longer scenes
         // hold the clip's last frame via FFmpeg).
         'max_scene_seconds' => 20,
+    ],
+
+    // Replicate hosted predictions — PRIMARY scene-video + voice provider.
+    // VERIFIED 2026-11-01 against replicate.com official model pages (each
+    // model's embedded input schema and billing config) and the official
+    // prediction API docs:
+    // - POST {base}/predictions {version, input} → {id, status}
+    // - GET  {base}/predictions/{id} → {status: starting|processing|
+    //   succeeded|failed|canceled, output, error}
+    // - Input files: https URLs or base64 data URIs (docs recommend data
+    //   URIs ≤ 1 MB)
+    // - Auth: Authorization: Bearer <token>
+    // - OUTPUT FILES ARE DELETED ~1 HOUR AFTER CREATION (official
+    //   data-retention doc) → the pipeline downloads immediately.
+    // All rates below are from each model's own billing config on its
+    // official model page (per second of output video unless noted).
+    'replicate' => [
+        'base_url' => env('REPLICATE_BASE_URL', 'https://api.replicate.com/v1'),
+        'pricing_verified_at' => '2026-11-01',
+
+        // Poll cadence + ceiling for the queue job's internal status loop.
+        'poll_interval_seconds' => (int) env('REPLICATE_POLL_INTERVAL_SECONDS', 10),
+        'poll_timeout_seconds' => (int) env('REPLICATE_POLL_TIMEOUT_SECONDS', 600),
+
+        // VERIFIED model catalog for AI scene animation. input_image = the
+        // model's image input key (verified schema); durations = supported
+        // clip lengths (seconds); resolution = the resolution value the app
+        // requests (catalog default, priced rate below); audio/lip_sync
+        // document what the model ACTUALLY does — audio_input models
+        // lip-sync a caller-provided audio track (no audio → silent clip);
+        // prompt_dialogue models render quoted dialogue natively; silent
+        // models carry no speech. default_usd_per_second prices the
+        // catalog-default resolution.
+        'models' => [
+            'wan-video/wan-2.5-i2v-fast' => [
+                'label' => 'Wan 2.5 I2V Fast — audio-input lip sync (default)',
+                'version' => '89a2696cf16b9aa6536d766585e0fc3a5c6f8082cd7eeb2f89f2bf88eb28d4af',
+                'image_input' => 'image',
+                'audio' => true,
+                'lip_sync' => 'audio_input',
+                'explicit_aspect' => false,
+                'durations' => [5, 10],
+                'resolution' => '720p',
+                'default_usd_per_second' => 0.068,
+                'notes' => 'Cheapest audio-capable i2v. 720p $0.068/s, 1080p $0.102/s. Aspect ratio follows the input image. Audio input: wav/mp3 3–30 s ≤ 15 MB — the clip lip-syncs to it.',
+            ],
+            'google/veo-3-fast' => [
+                'label' => 'Veo 3 Fast — native speech from prompt',
+                'version' => '3bdde0926a1e1b4b5c386200743ce12ccee7998402d53cc5560535abde33bbc9',
+                'image_input' => 'image',
+                'audio' => true,
+                'lip_sync' => 'prompt_dialogue',
+                'explicit_aspect' => true,
+                'durations' => [4, 6, 8],
+                'resolution' => '720p',
+                'default_usd_per_second' => 0.15,
+                'notes' => 'With audio $0.15/s, generate_audio=false $0.10/s. Explicit aspect_ratio (9:16). Speech rendered from quoted dialogue in the prompt — staging must verify quality.',
+            ],
+            'kwaivgi/kling-v2.1' => [
+                'label' => 'Kling v2.1 Standard — silent',
+                'version' => '4212c7e814e9b78e5b5b56b4e0af89e4144ca5dd72bde6af747c76997c6865b3',
+                'image_input' => 'start_image',
+                'audio' => false,
+                'lip_sync' => 'none',
+                'explicit_aspect' => false,
+                'durations' => [5, 10],
+                // Kling expresses quality through mode (standard|pro), not a
+                // resolution field — null means the adapter sends none.
+                'resolution' => null,
+                'default_usd_per_second' => 0.05,
+                'notes' => 'Silent clip; dialogue stays on the TTS overlay. Standard $0.05/s, Pro $0.09/s. Aspect ratio follows the (required) start image.',
+            ],
+            'bytedance/seedance-1-pro' => [
+                'label' => 'Seedance 1 Pro — silent',
+                'version' => 'c000db2c4c1959ce8514f5f3a1939c5b4d9c9b3d008e58a28a7f2eb17f7c645c',
+                'image_input' => 'image',
+                'audio' => false,
+                'lip_sync' => 'none',
+                'explicit_aspect' => false,
+                'durations' => [5],
+                'resolution' => '720p',
+                'default_usd_per_second' => 0.06,
+                'notes' => 'Silent clip; dialogue stays on the TTS overlay. 480p $0.03/s, 720p $0.06/s, 1080p $0.15/s. Aspect ratio follows the input image.',
+            ],
+            'minimax/hailuo-02' => [
+                'label' => 'Hailuo-02 (MiniMax) — silent',
+                'version' => 'e07720151cb4b8ec44aeddbc52c51429b87dbdbf299b69f5c80c67f09d29f72b',
+                'image_input' => 'first_frame_image',
+                'audio' => false,
+                'lip_sync' => 'none',
+                'explicit_aspect' => false,
+                'durations' => [6],
+                'resolution' => '768p',
+                'default_usd_per_second' => 0.045,
+                'notes' => 'Silent clip; dialogue stays on the TTS overlay. FLAT per-clip pricing: 512p $0.10/$0.15, 768p $0.27/$0.45, 1080p $0.48 (6 s/10 s; 10 s only 768p). The per-second figure is the 768p 6 s clip ÷ 6 s.',
+            ],
+        ],
+
+        // Default model when neither video settings nor env specify one:
+        // the cheapest audio-capable image-to-video model (evidence-based
+        // selection recorded in VIDEO_GENERATION_AI.md section 2b).
+        'default_model' => env('VIDEO_MODEL', 'wan-video/wan-2.5-i2v-fast'),
+
+        // Text-to-speech: minimax/speech-02-turbo (VERIFIED 2026-11-01).
+        // Billing: "$0.06 per thousand input tokens" (token_input_count;
+        // ≈16,666 tokens for $1). Voices are MiniMax system voice_ids —
+        // youthful-leaning options exist but their child-likeness MUST be
+        // verified with real samples before being advertised as child
+        // voices (VOICES honesty rule).
+        'tts' => [
+            'default_model' => env('TTS_MODEL', 'minimax/speech-02-turbo'),
+            'version' => env('REPLICATE_TTS_VERSION', 'f39649380c14fcc2263e2cc4f27d112629b72e95d7c5a8e5eb23bd90444fd34c'),
+
+            // Documented voice_id values worth exposing (subset of the
+            // README's full list; narrator + youthful bands + adults).
+            'voices' => [
+                // Youthful-leaning system voices (labeled honestly in the UI).
+                'English_PlayfulGirl',
+                'English_LovelyGirl',
+                'English_WhimsicalGirl',
+                'English_Soft-spokenGirl',
+                'English_Kind-heartedGirl',
+                'English_UpsetGirl',
+                'English_SadTeen',
+                'English_Strong-WilledBoy',
+                'English_DecentYoungMan',
+                'English_ReservedYoungMan',
+                'English_AnimeCharacter',
+                // Adult narration/character voices.
+                'English_CaptivatingStoryteller',
+                'English_WiseScholar',
+                'English_CalmWoman',
+                'English_FriendlyPerson',
+                'English_PatientMan',
+                'English_Wiselady',
+            ],
+
+            // Narrator default: adult storyteller.
+            'default_voice' => env('REPLICATE_TTS_DEFAULT_VOICE', 'English_CaptivatingStoryteller'),
+
+            // Verified billing figure (USD per 1,000 input tokens).
+            'price_per_1k_tokens' => 0.06,
+
+            // Documented text limit (verified schema: max 10,000 chars).
+            'max_input_chars' => 10000,
+
+            // wav: FFmpeg-friendly, lossless, duration readable from the
+            // header (same reasoning as the OpenAI adapter).
+            'response_format' => env('REPLICATE_TTS_RESPONSE_FORMAT', 'wav'),
+
+            // Sync mode wait + polling for the short synthesis calls.
+            'sync_wait_seconds' => (int) env('REPLICATE_TTS_SYNC_WAIT_SECONDS', 60),
+            'poll_interval_seconds' => (int) env('REPLICATE_TTS_POLL_INTERVAL_SECONDS', 2),
+            'poll_timeout_seconds' => (int) env('REPLICATE_TTS_POLL_TIMEOUT_SECONDS', 120),
+        ],
     ],
 ];

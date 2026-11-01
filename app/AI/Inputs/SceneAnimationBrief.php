@@ -29,5 +29,9 @@ final class SceneAnimationBrief
         public readonly array $dialogueLines = [],
         /** Whether the caller wants the clip to carry native speech/audio. */
         public readonly bool $withNativeAudio = false,
+        /** Audio-track lip-sync models (e.g. wan-2.5): the dialogue audio
+         * file on the artifact disk that the clip should speak in sync. */
+        public readonly ?string $audioDisk = null,
+        public readonly ?string $audioPath = null,
     ) {}
 }

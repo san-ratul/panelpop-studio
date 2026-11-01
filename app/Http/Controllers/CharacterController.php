@@ -40,7 +40,7 @@ class CharacterController extends Controller
             'referenceJobActive' => GenerationJobPresenter::hasActive($referenceJobs),
             'voiceGroups' => VoiceCatalog::voiceGroups(),
             'stylePresets' => VoiceCatalog::stylePresets(),
-            'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
+            'defaultVoice' => VoiceCatalog::defaultVoice(),
         ]);
     }
 
@@ -63,7 +63,7 @@ class CharacterController extends Controller
             'character' => self::present($character),
             'voiceGroups' => VoiceCatalog::voiceGroups(),
             'stylePresets' => VoiceCatalog::stylePresets(),
-            'defaultVoice' => (string) config('ai.openai.tts.default_voice', 'alloy'),
+            'defaultVoice' => VoiceCatalog::defaultVoice(),
         ]);
     }
 

@@ -16,12 +16,13 @@ final class VideoProviderCapabilities
         public readonly bool $supportsReferenceImage,
         public readonly bool $supportsNativeAudio,
         /** 'prompt_dialogue' = the model renders spoken dialogue with lip
-         * sync from quoted dialogue in the prompt; 'none' = no speech. */
+         * sync from quoted dialogue in the prompt; 'audio_input' = the clip
+         * lip-syncs to a caller-provided audio track; 'none' = no speech. */
         public readonly string $lipSync,
         public readonly array $supportedDurations,
         public readonly ?string $notes = null,
     ) {
-        if (! in_array($lipSync, ['none', 'prompt_dialogue'], true)) {
+        if (! in_array($lipSync, ['none', 'prompt_dialogue', 'audio_input'], true)) {
             throw new \InvalidArgumentException('Unknown lipSync mode.');
         }
     }
