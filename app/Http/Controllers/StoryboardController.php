@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\AI\Exceptions\ProviderException;
+use App\AI\Support\VideoModelCatalog;
 use App\Enums\GenerationJobType;
 use App\Enums\ProjectStatus;
 use App\Enums\StoryStatus;
@@ -47,7 +48,9 @@ class StoryboardController extends Controller
 
         $planJobs = GenerationJobPresenter::recent($video, GenerationJobType::ScenePlanning);
         $imageJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneImage);
-        $videoJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneVideo);
+        // Per-scene status display needs every recent scene-video job, not
+        // just the last five (a video can animate dozens of scenes at once).
+        $videoJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneVideo, 200);
         $referenceJobs = GenerationJobPresenter::recentForProject($project, GenerationJobType::CharacterReference);
         $voiceJobs = GenerationJobPresenter::recent($video, GenerationJobType::VoiceGeneration);
 
@@ -80,6 +83,7 @@ class StoryboardController extends Controller
             'dialogueEnabled' => VoiceGenerationDispatcher::modeAllowsDialogue($presentationMode),
             'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($presentationMode),
             'hasReadyStory' => ($video->story?->status ?? null) === StoryStatus::Ready,
+            'videoModelRates' => VideoModelCatalog::usdPerSecondMap(),
         ]);
     }
 
@@ -295,16 +299,14 @@ class StoryboardController extends Controller
     private function animationCostEstimate(Video $video, int $clipCount, ?float $perClipSeconds = null): string
     {
         $model = $video->effectiveVideoModel();
-        $meta = config('ai.runway.models.'.$model, []);
-        $rate = is_array($meta) && is_numeric($meta['rates_credits_per_second'] ?? null)
-            ? (float) $meta['rates_credits_per_second']
-            : 0.0;
 
         $avgSeconds = $perClipSeconds ?? max(1.0, (float) $video->scenes()->avg('duration_seconds'));
 
-        $usd = ($rate / 100.0) * $avgSeconds * max(1, $clipCount);
+        $usd = VideoModelCatalog::estimateUsd($model, $avgSeconds, $clipCount);
 
-        return sprintf('$%.2f', $usd);
+        return $usd === null
+            ? sprintf('unknown (no verified rate for %s)', $model)
+            : sprintf('$%.2f', $usd);
     }
 
     /**

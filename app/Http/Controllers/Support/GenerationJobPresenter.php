@@ -17,15 +17,17 @@ final class GenerationJobPresenter
 
     /**
      * Video-scoped job history (story, planning, images, voice, render).
+     * Per-subject fan-out types (scene video) pass a higher limit so every
+     * scene can resolve its own live/failed job for status display.
      *
      * @return list<array<string, mixed>>
      */
-    public static function recent(Video $video, GenerationJobType $type): array
+    public static function recent(Video $video, GenerationJobType $type, ?int $limit = null): array
     {
         return $video->generationJobs()
             ->where('type', $type->value)
             ->orderByDesc('id')
-            ->limit(self::RECENT_LIMIT)
+            ->limit($limit ?? self::RECENT_LIMIT)
             ->get()
             ->map(static fn (GenerationJob $job): array => self::present($job))
             ->values()

@@ -408,4 +408,99 @@ class SceneVideoGenerationTest extends TestCase
         $this->assertSame('animated', $video->effectiveGenerationMode());
         $this->assertSame('gen4_turbo', $video->effectiveVideoModel());
     }
+
+    // ------------------------------------------------------------------
+    // Animate button HTTP flow (storyboard scene card → route → job row).
+    // These cover the endpoint the storyboard Animate button posts to,
+    // including the failure modes that previously failed silently in the UI.
+    // ------------------------------------------------------------------
+
+    public function test_the_animate_button_request_queues_a_scene_video_job_for_the_right_scene(): void
+    {
+        $this->fakeVideoDefault();
+        $video = $this->makeAnimatedVideo();
+        $scene = $video->scenes()->first();
+
+        $response = $this->post(
+            route('scenes.generate-video', [$video->project, $video, $scene]),
+        );
+
+        $response->assertRedirect(route('storyboard.show', [$video->project, $video]));
+        $response->assertSessionHasNoErrors();
+
+        $job = $video->generationJobs()->where('type', 'scene_video')->first();
+
+        $this->assertNotNull($job, 'the per-scene animate request created a job row');
+        $this->assertSame($scene->id, $job->payload['scene_id']);
+        $this->assertSame($scene->number, $job->payload['scene_number']);
+        $this->assertSame($video->id, $job->video_id);
+        $this->assertNotSame('failed', $job->status, 'the queued job must not fail immediately');
+    }
+
+    public function test_the_animate_button_request_reports_still_mode_instead_of_failing_silently(): void
+    {
+        $this->fakeVideoDefault();
+        $video = $this->createRenderableProject($this->user); // defaults to still mode
+        $scene = $video->scenes()->first();
+
+        $response = $this->post(
+            route('scenes.generate-video', [$video->project, $video, $scene]),
+        );
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors('videos', 'the still-mode rejection must be visible to the user');
+
+        $this->assertSame(0, $video->generationJobs()->where('type', 'scene_video')->count());
+    }
+
+    public function test_the_animate_button_request_requires_the_scene_image(): void
+    {
+        $this->fakeVideoDefault();
+        $video = $this->makeAnimatedVideo();
+        $scene = $video->scenes()->first();
+        $scene->update(['image_asset_id' => null]);
+
+        $response = $this->post(
+            route('scenes.generate-video', [$video->project, $video, $scene]),
+        );
+
+        $response->assertRedirect(route('storyboard.show', [$video->project, $video]));
+        $this->assertSame(0, $video->generationJobs()->where('type', 'scene_video')->count());
+    }
+
+    public function test_the_animate_button_request_regenerates_when_a_clip_already_exists(): void
+    {
+        $this->fakeVideoDefault();
+        $video = $this->makeAnimatedVideo();
+        $scene = $video->scenes()->first();
+        $scene->update(['video_asset_id' => 555555]);
+
+        $response = $this->post(
+            route('scenes.generate-video', [$video->project, $video, $scene]),
+        );
+
+        $response->assertRedirect(route('storyboard.show', [$video->project, $video]));
+        $response->assertSessionHasNoErrors();
+
+        $job = $video->generationJobs()->where('type', 'scene_video')->first();
+
+        $this->assertNotNull($job, 're-animate on an existing clip is explicit force');
+        $this->assertTrue((bool) $job->payload['force']);
+    }
+
+    public function test_another_user_cannot_animate_a_scene(): void
+    {
+        $this->fakeVideoDefault();
+        $video = $this->makeAnimatedVideo();
+        $scene = $video->scenes()->first();
+
+        $stranger = User::factory()->create();
+
+        $response = $this->actingAs($stranger)->post(
+            route('scenes.generate-video', [$video->project, $video, $scene]),
+        );
+
+        $response->assertForbidden();
+        $this->assertSame(0, $video->generationJobs()->where('type', 'scene_video')->count());
+    }
 }

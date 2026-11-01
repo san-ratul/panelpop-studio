@@ -83,6 +83,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    videoModelRates: {
+        type: Object,
+        default: () => ({}),
+    },
 });
 
 const editingSceneId = ref(null);
@@ -99,6 +103,9 @@ const editSceneForm = useForm({
     background_description: '',
     image_prompt: '',
     narration_text: '',
+    motion_action: '',
+    motion_camera: '',
+    motion_environment: '',
 });
 
 const editingLineId = ref(null);
@@ -139,31 +146,139 @@ const imageForm = useForm({});
 const videoForm = useForm({});
 const assignVoicesForm = useForm({});
 
+// ONE shared per-scene animation form: its processing flag drives the
+// button spinner, its error bag is rendered below (the previous anonymous
+// useForm({}) swallowed every 422 error, which made the Animate button
+// appear to do nothing).
+const animateForm = useForm({});
+const animatingSceneId = ref(null);
+
 const latestPlanJob = computed(() => props.planJobs[0] ?? null);
 
 const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.videoJobActive || props.referenceJobActive || props.voiceJobActive);
 
 const assignVoicesBusy = computed(() => assignVoicesForm.processing || props.voiceJobActive);
 
-const videoModelRates = {
-    'veo3.1_fast': 0.15,
-    'kling3.0_standard': 0.13,
-    wan3: 0.10,
-    gen4_turbo: 0.05,
-    'gen4.5': 0.12,
-};
+const animateError = computed(() => animateForm.errors.videos ?? '');
 
-const videoCostEstimate = computed(() => {
+const animatedCostTotal = computed(() => {
     if (props.scenes.length === 0) {
         return null;
     }
 
-    const averageSeconds = props.scenes.reduce((total, scene) => total + scene.duration_seconds, 0) / props.scenes.length;
-    const rate = videoModelRates[props.video.video_model] ?? 0;
-    const cost = rate * Math.ceil(averageSeconds) * props.scenes.length;
+    const rate = Number(props.videoModelRates[props.video.video_model] ?? 0);
 
-    return `~$${cost.toFixed(2)} for ${props.scenes.length} scene(s) (model ${props.video.video_model})`;
+    if (! rate) {
+        return null;
+    }
+
+    const seconds = props.scenes.reduce((total, scene) => total + Math.ceil(scene.duration_seconds), 0);
+
+    return `$${(rate * seconds).toFixed(2)}`;
 });
+
+function sceneCostEstimate(scene) {
+    const rate = Number(props.videoModelRates[props.video.video_model] ?? 0);
+
+    if (! rate) {
+        return null;
+    }
+
+    return `$${(rate * Math.ceil(scene.duration_seconds)).toFixed(2)}`;
+}
+
+function voiceLabelFor(characterId) {
+    if (! characterId) {
+        return 'Narrator voice';
+    }
+
+    const character = props.characters.find((candidate) => candidate.id === characterId);
+
+    if (! character?.voice_config?.voice) {
+        return 'Default voice';
+    }
+
+    return String(character.voice_config.voice).replaceAll('_', ' ');
+}
+
+// Per-scene AI animation state derived from the video-scoped scene-video
+// jobs: the newest job per scene decides, an active job always wins over a
+// finished one (retry supersedes an older failure).
+const sceneVideoStates = computed(() => {
+    const latest = {};
+    const active = {};
+
+    for (const job of props.videoJobs) {
+        const sceneId = job.payload?.scene_id;
+
+        if (! sceneId) {
+            continue;
+        }
+
+        if (latest[sceneId] === undefined) {
+            latest[sceneId] = job;
+        }
+
+        if (['queued', 'running'].includes(job.status)) {
+            if (active[sceneId] === undefined || job.id > active[sceneId].id) {
+                active[sceneId] = job;
+            }
+        }
+    }
+
+    const map = {};
+
+    for (const scene of props.scenes) {
+        const job = active[scene.id] ?? latest[scene.id] ?? null;
+
+        if (job === null) {
+            map[scene.id] = { state: scene.has_clip ? 'completed' : 'not_generated', job: null };
+        } else if (['queued', 'running'].includes(job.status)) {
+            map[scene.id] = { state: job.status === 'running' ? 'processing' : 'queued', job };
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+            map[scene.id] = { state: 'failed', job };
+        } else {
+            map[scene.id] = { state: scene.has_clip ? 'completed' : 'not_generated', job };
+        }
+    }
+
+    return map;
+});
+
+function sceneVideoState(scene) {
+    return sceneVideoStates.value[scene.id]?.state ?? (scene.has_clip ? 'completed' : 'not_generated');
+}
+
+const STATE_BADGES = {
+    not_generated: { label: 'Not generated', class: 'bg-gray-100 text-gray-600' },
+    queued: { label: 'Queued', class: 'bg-indigo-50 text-indigo-700' },
+    processing: { label: 'Animating…', class: 'bg-indigo-50 text-indigo-700' },
+    completed: { label: 'AI clip ready', class: 'bg-emerald-50 text-emerald-700' },
+    failed: { label: 'Failed', class: 'bg-red-50 text-red-700' },
+};
+
+function sceneStateBadge(scene) {
+    return STATE_BADGES[sceneVideoState(scene)] ?? STATE_BADGES.not_generated;
+}
+
+const detailsOpen = ref({});
+const imagePreviewOpen = ref({});
+
+function detailsVisible(sceneId) {
+    return detailsOpen.value[sceneId] ?? false;
+}
+
+function toggleDetails(sceneId) {
+    detailsOpen.value[sceneId] = ! detailsVisible(sceneId);
+}
+
+function imagePreviewVisible(scene) {
+    return imagePreviewOpen.value[scene.id] ?? scene.has_clip === false;
+}
+
+function toggleImagePreview(scene) {
+    imagePreviewOpen.value[scene.id] = ! imagePreviewVisible(scene);
+}
 
 function submitAddScene() {
     addSceneForm.post(route('scenes.store', [props.project.id, props.video.id]), {
@@ -177,6 +292,9 @@ function startEdit(scene) {
     editSceneForm.background_description = scene.background_description;
     editSceneForm.image_prompt = scene.image_prompt;
     editSceneForm.narration_text = scene.narration_text ?? '';
+    editSceneForm.motion_action = scene.motion_action ?? '';
+    editSceneForm.motion_camera = scene.motion_camera ?? '';
+    editSceneForm.motion_environment = scene.motion_environment ?? '';
 }
 
 function submitEditScene() {
@@ -250,10 +368,17 @@ function generateSceneImage(scene) {
 }
 
 function generateSceneVideo(scene) {
-    useForm({}).post(route('scenes.generate-video', [props.project.id, props.video.id, scene.id]), {
-        preserveScroll: true,
-        onSuccess: () => startPolling(),
-    });
+    animatingSceneId.value = scene.id;
+
+    animateForm
+        .transform((data) => ({ ...data }))
+        .post(route('scenes.generate-video', [props.project.id, props.video.id, scene.id]), {
+            preserveScroll: true,
+            onSuccess: () => startPolling(),
+            onFinish: () => {
+                animatingSceneId.value = null;
+            },
+        });
 }
 
 const pollTimer = ref(null);
@@ -357,8 +482,8 @@ if (anyJobActive.value) {
             <p v-if="video.generation_mode !== 'animated'">
                 Switch the generation mode to AI animated video in the video settings
             </p>
-            <p v-if="videoCostEstimate">
-                Estimated cost: {{ videoCostEstimate }}
+            <p v-if="animatedCostTotal && video.generation_mode === 'animated'">
+                Estimated cost to animate all {{ scenes.length }} scene(s): {{ animatedCostTotal }} (model {{ video.video_model }})
             </p>
         </div>
 
@@ -367,6 +492,13 @@ if (anyJobActive.value) {
             class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
             {{ planForm.errors.plan || imageForm.errors.images || videoForm.errors.videos || assignVoicesForm.errors.voices }}
+        </p>
+
+        <p
+            v-if="animateError"
+            class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+            {{ animateError }}
         </p>
 
         <div
@@ -518,43 +650,55 @@ if (anyJobActive.value) {
             </p>
         </div>
 
-        <div class="mt-6 space-y-4">
+        <div class="mt-6 grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
             <p
                 v-if="scenes.length === 0"
-                class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-600"
+                class="rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-600 lg:col-span-2 2xl:col-span-3"
             >
                 No scenes yet. Add your first scene below.
             </p>
 
-            <div
-                v-for="(scene, index) in scenes"
+            <article
+                v-for="scene in scenes"
                 :key="scene.id"
-                class="rounded-lg border border-gray-200 bg-white p-5"
+                class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm"
             >
-                <div class="flex items-start justify-between gap-3">
-                    <div class="flex items-center gap-3">
-                        <span class="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+                <header class="flex items-center justify-between gap-2 border-b border-gray-100 px-4 py-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
                             Scene {{ scene.number }}
                         </span>
-                        <span class="text-sm text-gray-600">{{ scene.duration_seconds }} s</span>
-                        <span class="text-xs uppercase tracking-wide text-gray-400">{{ scene.status.replaceAll('_', ' ') }}</span>
+                        <span class="text-xs text-gray-500">{{ scene.duration_seconds }} s</span>
+                        <span
+                            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                            :class="sceneStateBadge(scene).class"
+                        >
+                            <span
+                                v-if="['queued', 'processing'].includes(sceneVideoState(scene))"
+                                class="mr-1 h-2 w-2 animate-spin rounded-full border border-indigo-300 border-t-indigo-600"
+                                aria-hidden="true"
+                            />
+                            {{ sceneStateBadge(scene).label }}
+                        </span>
                     </div>
-                    <div class="flex gap-2 text-sm">
+                    <div class="flex gap-2 text-xs">
                         <button
                             type="button"
-                            class="text-gray-500 hover:text-gray-800 disabled:opacity-30"
+                            class="text-gray-400 hover:text-gray-700 disabled:opacity-30"
                             :disabled="index === 0 || reorderForm.processing"
+                            :aria-label="`Move scene ${scene.number} up`"
                             @click="moveScene(scene, -1)"
                         >
-                            ↑ Up
+                            ↑
                         </button>
                         <button
                             type="button"
-                            class="text-gray-500 hover:text-gray-800 disabled:opacity-30"
+                            class="text-gray-400 hover:text-gray-700 disabled:opacity-30"
                             :disabled="index === scenes.length - 1 || reorderForm.processing"
+                            :aria-label="`Move scene ${scene.number} down`"
                             @click="moveScene(scene, 1)"
                         >
-                            ↓ Down
+                            ↓
                         </button>
                         <button
                             type="button"
@@ -571,18 +715,25 @@ if (anyJobActive.value) {
                             Delete
                         </button>
                     </div>
-                </div>
+                </header>
 
-                <div class="mt-3 grid gap-4 md:grid-cols-[12rem_1fr]">
-                    <div class="flex flex-col gap-2">
-                        <CollapsibleSection
-                            title="Image preview"
-                            :section-key="`scene-image-${scene.id}`"
-                            :default-expanded="!scene.has_image"
-                        >
-                            <div class="mx-auto flex aspect-[9/16] w-full max-w-40 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                <div class="flex flex-1 flex-col gap-3 px-4 py-3">
+                    <div class="flex gap-3">
+                        <div class="flex w-28 shrink-0 flex-col gap-2">
+                            <div class="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                                <video
+                                    v-if="scene.has_clip && sceneVideoState(scene) === 'completed'"
+                                    :src="scene.clip_url"
+                                    :poster="scene.image_url ?? undefined"
+                                    controls
+                                    preload="metadata"
+                                    playsinline
+                                    class="h-full w-full object-contain"
+                                >
+                                    Your browser cannot play this clip.
+                                </video>
                                 <img
-                                    v-if="scene.image_url"
+                                    v-else-if="scene.image_url && imagePreviewVisible(scene)"
                                     :src="scene.image_url"
                                     :alt="`Scene ${scene.number} illustration`"
                                     class="h-full w-full object-cover"
@@ -591,7 +742,7 @@ if (anyJobActive.value) {
                                     v-else
                                     class="p-2 text-center text-xs text-gray-400"
                                 >
-                                    <template v-if="scene.status === 'image_generating'">
+                                    <template v-if="scene.status === 'image_generating' || sceneVideoState(scene) === 'processing'">
                                         Generating…
                                     </template>
                                     <template v-else>
@@ -599,293 +750,387 @@ if (anyJobActive.value) {
                                     </template>
                                 </span>
                             </div>
-                        </CollapsibleSection>
-                        <button
-                            type="button"
-                            class="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                            @click="generateSceneImage(scene)"
-                        >
-                            {{ scene.has_image ? 'Regenerate image' : 'Generate image' }}
-                        </button>
-                        <p
-                            v-if="scene.error_message"
-                            class="text-xs text-red-600"
-                        >
-                            {{ scene.error_message }}
-                        </p>
-                        <button
-                            v-if="scene.has_image"
-                            type="button"
-                            class="text-xs font-medium"
-                            :class="scene.video_error_message ? 'text-red-600 hover:text-red-800' : 'text-indigo-600 hover:text-indigo-800'"
+                            <button
+                                v-if="scene.image_url"
+                                type="button"
+                                class="text-xs font-medium text-gray-500 hover:text-gray-800"
+                                @click="toggleImagePreview(scene)"
+                            >
+                                {{ imagePreviewVisible(scene) ? 'Hide image' : 'Show image' }}
+                            </button>
+                            <button
+                                type="button"
+                                class="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-40"
+                                :disabled="imageForm.processing"
+                                @click="generateSceneImage(scene)"
+                            >
+                                {{ scene.has_image ? 'Regenerate image' : 'Generate image' }}
+                            </button>
+                        </div>
+
+                        <div class="min-w-0 flex-1 space-y-1.5 text-sm">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Description
+                                </p>
+                                <p class="text-gray-700">
+                                    {{ scene.background_description }}
+                                </p>
+                            </div>
+                            <div v-if="scene.motion_action">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Action
+                                </p>
+                                <p class="text-gray-700">
+                                    {{ scene.motion_action }}
+                                </p>
+                            </div>
+                            <div v-if="scene.motion_camera || scene.motion_environment">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Camera / environment
+                                </p>
+                                <p class="text-gray-600">
+                                    <template v-if="scene.motion_camera">{{ scene.motion_camera }}</template>
+                                    <template v-if="scene.motion_camera && scene.motion_environment"> — </template>
+                                    <template v-if="scene.motion_environment">{{ scene.motion_environment }}</template>
+                                </p>
+                            </div>
+                            <div v-if="scene.narration_text">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                    Narration
+                                </p>
+                                <p class="text-gray-700">
+                                    {{ scene.narration_text }}
+                                </p>
+                            </div>
+                            <p
+                                v-if="sceneCostEstimate(scene) && video.generation_mode === 'animated'"
+                                class="text-xs text-gray-500"
+                            >
+                                Animation estimate: {{ sceneCostEstimate(scene) }} ({{ video.video_model }})
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <BaseButton
+                            v-if="sceneVideoState(scene) !== 'queued' && sceneVideoState(scene) !== 'processing'"
+                            variant="outline"
+                            class="!py-1.5 text-xs"
+                            :disabled="animateForm.processing || video.generation_mode !== 'animated'"
+                            :title="video.generation_mode !== 'animated' ? 'Switch the generation mode to AI animated video in the video settings' : ''"
                             @click="generateSceneVideo(scene)"
                         >
-                            {{ scene.has_clip ? 'Re-animate' : 'Animate' }}
-                        </button>
+                            <span
+                                v-if="animatingSceneId === scene.id && animateForm.processing"
+                                class="h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"
+                                aria-hidden="true"
+                            />
+                            {{ animatingSceneId === scene.id && animateForm.processing
+                                ? 'Queueing…'
+                                : (sceneVideoState(scene) === 'failed'
+                                    ? 'Retry animation'
+                                    : (scene.has_clip ? 'Re-animate' : 'Animate')) }}
+                        </BaseButton>
                         <span
                             v-if="scene.has_clip"
-                            class="inline-flex items-center gap-1 self-start rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                            class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
                         >
-                            AI clip<template v-if="scene.clip_model"> · {{ scene.clip_model }}</template>
+                            {{ scene.clip_model ?? 'AI clip' }}
                         </span>
-                        <p
-                            v-if="scene.video_error_message"
-                            class="text-xs text-red-600"
+                        <button
+                            type="button"
+                            class="text-xs font-medium text-gray-500 hover:text-gray-800"
+                            @click="toggleDetails(scene.id)"
                         >
-                            {{ scene.video_error_message }}
-                        </p>
+                            {{ detailsVisible(scene.id) ? 'Hide details' : 'Details & dialogue' }}
+                        </button>
                     </div>
-                    <dl class="space-y-1 text-sm text-gray-700">
-                        <div>
-                            <dt class="font-medium text-gray-900">
-                                Background
-                            </dt>
-                            <dd>{{ scene.background_description }}</dd>
-                        </div>
-                        <div>
-                            <dt class="font-medium text-gray-900">
-                                Image prompt
-                            </dt>
-                            <dd>{{ scene.image_prompt }}</dd>
-                        </div>
-                        <div v-if="scene.narration_text">
-                            <dt class="font-medium text-gray-900">
-                                Narration
-                            </dt>
-                            <dd>{{ scene.narration_text }}</dd>
-                        </div>
-                    </dl>
-                </div>
 
-                <form
-                    v-if="editingSceneId === scene.id"
-                    class="mt-4 space-y-4 rounded-md border border-gray-200 bg-gray-50 p-4"
-                    @submit.prevent="submitEditScene"
-                >
-                    <TextInput
-                        :id="`duration-${scene.id}`"
-                        v-model.number="editSceneForm.duration_seconds"
-                        type="number"
-                        label="Duration (seconds, 0.5–120)"
-                        required
-                        step="0.5"
-                        min="0.5"
-                        max="120"
-                        class="w-full sm:w-40"
-                        :error="editSceneForm.errors.duration_seconds"
-                    />
-                    <TextArea
-                        :id="`background-${scene.id}`"
-                        v-model="editSceneForm.background_description"
-                        label="Background description"
-                        rows="2"
-                        required
-                        :error="editSceneForm.errors.background_description"
-                    />
-                    <TextArea
-                        :id="`prompt-${scene.id}`"
-                        v-model="editSceneForm.image_prompt"
-                        label="Image prompt"
-                        rows="2"
-                        required
-                        :error="editSceneForm.errors.image_prompt"
-                    />
-                    <TextArea
-                        :id="`narration-${scene.id}`"
-                        v-model="editSceneForm.narration_text"
-                        label="Narration text"
-                        rows="2"
-                        :error="editSceneForm.errors.narration_text"
-                    />
-                    <BaseButton
-                        type="submit"
-                        :disabled="editSceneForm.processing"
+                    <p
+                        v-if="scene.video_error_message || sceneVideoStates[scene.id]?.job?.error_message"
+                        class="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700"
                     >
-                        Save scene
-                    </BaseButton>
-                </form>
+                        {{ scene.video_error_message || sceneVideoStates[scene.id]?.job?.error_message }}
+                    </p>
+                    <p
+                        v-if="scene.error_message"
+                        class="text-xs text-red-600"
+                    >
+                        {{ scene.error_message }}
+                    </p>
 
-                <div class="mt-4 border-t border-gray-100 pt-3">
-                    <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                        Dialogue lines
-                    </h4>
-                    <ul class="mt-2 space-y-2 text-sm text-gray-700">
-                        <li
-                            v-for="line in scene.dialogue_lines"
-                            :key="line.id"
-                        >
-                            <form
-                                v-if="editingLineId === line.id"
-                                class="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3"
-                                @submit.prevent="submitEditLine(scene)"
-                            >
-                                <SelectInput
-                                    :id="`line-speaker-${line.id}`"
-                                    v-model="editLineForm.character_id"
-                                    label="Speaker"
+                    <div
+                        v-if="detailsVisible(scene.id)"
+                        class="space-y-3 rounded-md border border-gray-100 bg-gray-50 p-3"
+                    >
+                        <div class="space-y-1 text-sm">
+                            <p>
+                                <span class="text-xs font-semibold uppercase tracking-wide text-gray-400">Image prompt: </span>
+                                <span class="text-gray-700">{{ scene.image_prompt }}</span>
+                            </p>
+                        </div>
+
+                        <div class="border-t border-gray-200 pt-2">
+                            <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                Dialogue lines
+                            </h4>
+                            <ul class="mt-2 space-y-2 text-sm text-gray-700">
+                                <li
+                                    v-for="line in scene.dialogue_lines"
+                                    :key="line.id"
                                 >
-                                    <option value="">
-                                        Narrator (no character)
-                                    </option>
-                                    <option
-                                        v-for="character in characters"
-                                        :key="character.id"
-                                        :value="character.id"
+                                    <form
+                                        v-if="editingLineId === line.id"
+                                        class="space-y-3 rounded-md border border-gray-200 bg-white p-3"
+                                        @submit.prevent="submitEditLine(scene)"
                                     >
-                                        {{ character.name }}
-                                    </option>
-                                </SelectInput>
-                                <TextInput
-                                    :id="`line-text-${line.id}`"
-                                    v-model="editLineForm.text"
-                                    type="text"
-                                    required
-                                    maxlength="5000"
-                                    label="Line text"
-                                    :error="editLineForm.errors.text"
-                                />
-                                <TextInput
-                                    :id="`line-emotion-${line.id}`"
-                                    v-model="editLineForm.emotion"
-                                    type="text"
-                                    maxlength="40"
-                                    label="Emotion"
-                                    description="Optional delivery emotion, e.g. excited, whispering (max 40 characters)."
-                                    :error="editLineForm.errors.emotion"
-                                    class="w-full sm:w-64"
-                                />
-                                <TextArea
-                                    :id="`line-voice-${line.id}`"
-                                    v-model="editLineForm.voice_instructions"
-                                    rows="2"
-                                    maxlength="4096"
-                                    label="Voice instructions"
-                                    description="Optional direction for how this line should sound (max 4096 characters)."
-                                    :error="editLineForm.errors.voice_instructions"
-                                />
-                                <div class="flex items-center gap-3">
-                                    <BaseButton
-                                        type="submit"
-                                        variant="outline"
-                                        :disabled="editLineForm.processing"
-                                    >
-                                        Save line
-                                    </BaseButton>
-                                    <button
-                                        type="button"
-                                        class="text-sm text-gray-500 hover:text-gray-800"
-                                        @click="editingLineId = null"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <FieldError :error="editLineForm.errors.character_id" />
-                                </div>
-                            </form>
-                            <div
-                                v-else
-                                class="flex items-start justify-between gap-3"
-                            >
-                                <div class="min-w-0">
-                                    <p class="flex flex-wrap items-center gap-2">
-                                        <strong class="text-gray-900">{{ line.character_name ?? 'Narrator' }}:</strong>
-                                        <span>{{ line.text }}</span>
-                                        <span
-                                            class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                                            :class="line.emotion ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-600'"
+                                        <SelectInput
+                                            :id="`line-speaker-${line.id}`"
+                                            v-model="editLineForm.character_id"
+                                            label="Speaker"
                                         >
-                                            {{ line.emotion ?? (line.character_id ? 'neutral' : 'narrator') }}
-                                        </span>
-                                    </p>
-                                    <p
-                                        v-if="line.voice_instructions"
-                                        class="mt-0.5 text-xs text-gray-500"
+                                            <option value="">
+                                                Narrator (no character)
+                                            </option>
+                                            <option
+                                                v-for="character in characters"
+                                                :key="character.id"
+                                                :value="character.id"
+                                            >
+                                                {{ character.name }}
+                                            </option>
+                                        </SelectInput>
+                                        <TextInput
+                                            :id="`line-text-${line.id}`"
+                                            v-model="editLineForm.text"
+                                            type="text"
+                                            required
+                                            maxlength="5000"
+                                            label="Line text"
+                                            :error="editLineForm.errors.text"
+                                        />
+                                        <TextInput
+                                            :id="`line-emotion-${line.id}`"
+                                            v-model="editLineForm.emotion"
+                                            type="text"
+                                            maxlength="40"
+                                            label="Emotion"
+                                            description="Optional delivery emotion, e.g. excited, whispering (max 40 characters)."
+                                            :error="editLineForm.errors.emotion"
+                                            class="w-full sm:w-64"
+                                        />
+                                        <TextArea
+                                            :id="`line-voice-${line.id}`"
+                                            v-model="editLineForm.voice_instructions"
+                                            rows="2"
+                                            maxlength="4096"
+                                            label="Voice instructions"
+                                            description="Optional direction for how this line should sound (max 4096 characters)."
+                                            :error="editLineForm.errors.voice_instructions"
+                                        />
+                                        <div class="flex items-center gap-3">
+                                            <BaseButton
+                                                type="submit"
+                                                variant="outline"
+                                                :disabled="editLineForm.processing"
+                                            >
+                                                Save line
+                                            </BaseButton>
+                                            <button
+                                                type="button"
+                                                class="text-sm text-gray-500 hover:text-gray-800"
+                                                @click="editingLineId = null"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <FieldError :error="editLineForm.errors.character_id" />
+                                        </div>
+                                    </form>
+                                    <div
+                                        v-else
+                                        class="flex items-start justify-between gap-3"
                                     >
-                                        {{ line.voice_instructions }}
-                                    </p>
-                                </div>
-                                <div class="flex shrink-0 gap-2">
-                                    <button
-                                        type="button"
-                                        class="text-xs text-indigo-600 hover:text-indigo-800"
-                                        @click="startEditLine(line)"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        type="button"
-                                        class="text-xs text-red-600 hover:text-red-800"
-                                        @click="destroyLine(scene, line)"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                            </div>
-                        </li>
-                        <li
-                            v-if="scene.dialogue_lines.length === 0"
-                            class="text-xs italic text-gray-400"
+                                        <div class="min-w-0">
+                                            <p class="flex flex-wrap items-center gap-2">
+                                                <strong class="text-gray-900">{{ line.character_name ?? 'Narrator' }}:</strong>
+                                                <span>{{ line.text }}</span>
+                                                <span
+                                                    class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                                                    :class="line.emotion ? 'bg-indigo-50 text-indigo-700' : 'bg-gray-100 text-gray-600'"
+                                                >
+                                                    {{ line.emotion ?? (line.character_id ? 'neutral' : 'narrator') }}
+                                                </span>
+                                            </p>
+                                            <p
+                                                v-if="line.voice_instructions"
+                                                class="mt-0.5 text-xs text-gray-500"
+                                            >
+                                                {{ line.voice_instructions }}
+                                            </p>
+                                            <p class="mt-0.5 text-xs text-gray-400">
+                                                Voice: {{ voiceLabelFor(line.character_id) }}
+                                            </p>
+                                        </div>
+                                        <div class="flex shrink-0 gap-2">
+                                            <button
+                                                type="button"
+                                                class="text-xs text-indigo-600 hover:text-indigo-800"
+                                                @click="startEditLine(line)"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="text-xs text-red-600 hover:text-red-800"
+                                                @click="destroyLine(scene, line)"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li
+                                    v-if="scene.dialogue_lines.length === 0"
+                                    class="text-xs italic text-gray-400"
+                                >
+                                    No dialogue lines.
+                                </li>
+                            </ul>
+                            <AddDialogueLine
+                                :project="project"
+                                :video="video"
+                                :scene="scene"
+                                :characters="characters"
+                            />
+                        </div>
+                    </div>
+
+                    <form
+                        v-if="editingSceneId === scene.id"
+                        class="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3"
+                        @submit.prevent="submitEditScene"
+                    >
+                        <TextInput
+                            :id="`duration-${scene.id}`"
+                            v-model.number="editSceneForm.duration_seconds"
+                            type="number"
+                            label="Duration (seconds, 0.5–120)"
+                            required
+                            step="0.5"
+                            min="0.5"
+                            max="120"
+                            class="w-full sm:w-40"
+                            :error="editSceneForm.errors.duration_seconds"
+                        />
+                        <TextArea
+                            :id="`background-${scene.id}`"
+                            v-model="editSceneForm.background_description"
+                            label="Background description"
+                            rows="2"
+                            required
+                            :error="editSceneForm.errors.background_description"
+                        />
+                        <TextArea
+                            :id="`prompt-${scene.id}`"
+                            v-model="editSceneForm.image_prompt"
+                            label="Image prompt"
+                            rows="2"
+                            required
+                            :error="editSceneForm.errors.image_prompt"
+                        />
+                        <TextArea
+                            :id="`motion-action-${scene.id}`"
+                            v-model="editSceneForm.motion_action"
+                            label="Motion — character action"
+                            rows="2"
+                            description="What the characters physically DO in this scene (used to animate the clip)."
+                            :error="editSceneForm.errors.motion_action"
+                        />
+                        <TextArea
+                            :id="`motion-camera-${scene.id}`"
+                            v-model="editSceneForm.motion_camera"
+                            label="Motion — camera"
+                            rows="1"
+                            :error="editSceneForm.errors.motion_camera"
+                        />
+                        <TextArea
+                            :id="`motion-environment-${scene.id}`"
+                            v-model="editSceneForm.motion_environment"
+                            label="Motion — environment"
+                            rows="1"
+                            :error="editSceneForm.errors.motion_environment"
+                        />
+                        <TextArea
+                            :id="`narration-${scene.id}`"
+                            v-model="editSceneForm.narration_text"
+                            label="Narration text"
+                            rows="2"
+                            :error="editSceneForm.errors.narration_text"
+                        />
+                        <BaseButton
+                            type="submit"
+                            :disabled="editSceneForm.processing"
                         >
-                            No dialogue lines.
-                        </li>
-                    </ul>
-                    <AddDialogueLine
-                        :project="project"
-                        :video="video"
-                        :scene="scene"
-                        :characters="characters"
-                    />
+                            Save scene
+                        </BaseButton>
+                    </form>
                 </div>
-            </div>
+            </article>
         </div>
 
-        <form
-            class="mt-6 max-w-2xl space-y-4 rounded-lg border border-gray-200 bg-white p-5"
-            @submit.prevent="submitAddScene"
+        <CollapsibleSection
+            title="Add scene"
+            section-key="storyboard-add-scene"
+            :default-expanded="scenes.length === 0"
+            class="mt-6"
         >
-            <h2 class="font-semibold text-gray-900">
-                Add scene
-            </h2>
-            <TextInput
-                id="add-duration"
-                v-model.number="addSceneForm.duration_seconds"
-                type="number"
-                label="Duration (seconds, 0.5–120)"
-                required
-                step="0.5"
-                min="0.5"
-                max="120"
-                class="w-full sm:w-40"
-                :error="addSceneForm.errors.duration_seconds"
-            />
-            <TextArea
-                id="add-background"
-                v-model="addSceneForm.background_description"
-                label="Background description"
-                rows="2"
-                required
-                :error="addSceneForm.errors.background_description"
-            />
-            <TextArea
-                id="add-prompt"
-                v-model="addSceneForm.image_prompt"
-                label="Image prompt"
-                rows="2"
-                required
-                :error="addSceneForm.errors.image_prompt"
-            />
-            <TextArea
-                id="add-narration"
-                v-model="addSceneForm.narration_text"
-                label="Narration text"
-                rows="2"
-                :error="addSceneForm.errors.narration_text"
-            />
-            <BaseButton
-                type="submit"
-                :disabled="addSceneForm.processing"
+            <form
+                class="max-w-2xl space-y-4"
+                @submit.prevent="submitAddScene"
             >
-                Add scene
-            </BaseButton>
-        </form>
+                <TextInput
+                    id="add-duration"
+                    v-model.number="addSceneForm.duration_seconds"
+                    type="number"
+                    label="Duration (seconds, 0.5–120)"
+                    required
+                    step="0.5"
+                    min="0.5"
+                    max="120"
+                    class="w-full sm:w-40"
+                    :error="addSceneForm.errors.duration_seconds"
+                />
+                <TextArea
+                    id="add-background"
+                    v-model="addSceneForm.background_description"
+                    label="Background description"
+                    rows="2"
+                    required
+                    :error="addSceneForm.errors.background_description"
+                />
+                <TextArea
+                    id="add-prompt"
+                    v-model="addSceneForm.image_prompt"
+                    label="Image prompt"
+                    rows="2"
+                    required
+                    :error="addSceneForm.errors.image_prompt"
+                />
+                <TextArea
+                    id="add-narration"
+                    v-model="addSceneForm.narration_text"
+                    label="Narration text"
+                    rows="2"
+                    :error="addSceneForm.errors.narration_text"
+                />
+                <BaseButton
+                    type="submit"
+                    :disabled="addSceneForm.processing"
+                >
+                    Add scene
+                </BaseButton>
+            </form>
+        </CollapsibleSection>
     </AppLayout>
 </template>
