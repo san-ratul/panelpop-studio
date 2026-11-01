@@ -54,6 +54,15 @@ Voice selection happens at synthesis time in `GenerateVoiceJob`:
 
 **Voice preview** (`characters.preview-voice`, `App\Services\VoicePreviewService`): the character UI's Preview button synthesizes a short sample of the selected voice/style. The preview is **not a production asset** — nothing is attached to a character, scene, or line — and identical voice+style requests reuse content-addressed artifacts via `TtsProvider::cachedArtifactPath` instead of re-hitting the provider. Every preview records a `voice_preview` operation row in the `provider_calls` ledger.
 
+## Replicate speech provider (2026-11-01) — youthful voices, honestly labeled
+
+`TTS_PROVIDER=replicate` switches speech to **`minimax/speech-02-turbo`** (official Replicate model; schema/billing verified 2026-11-01, $0.06 per 1k input tokens ≈ 16,666 chars/$1):
+
+- **Voices:** MiniMax system voice_ids. Youthful-leaning options exist (`English_PlayfulGirl`, `English_LovelyGirl`, `English_WhimsicalGirl`, `English_Strong-WilledBoy`, `English_DecentYoungMan`, `English_AnimeCharacter`, …) and are offered in the picker with **"system voice, unverified"** labels — the voice NAMES suggest youthfulness, but whether the performances pass as children must be proven with real samples before the product may call any of them child voices. Narrator default: `English_CaptivatingStoryteller` (adult).
+- **Delivery:** the documented `emotion` enum is derived best-effort from delivery-instruction keywords (happy/excited → `happy`, etc.); unmatched instructions are NOT sent (no pretend mapping). `pitch` (−12…+12 semitones) and `speed` (clamped to 0.5–2.0) are optional `voice_config` keys validated by `CharacterVoiceConfig` and ignored by the OpenAI adapter.
+- **Age-based suggestions:** characters carry explicit `age_years` + `gender` metadata (migration `2026_11_01_000001`); `AgeVoiceResolver` suggests a voice per band+gender on the character page (user confirms + previews — never silently applied). Missing metadata → no suggestion. On OpenAI, children get the youthful-delivery preset on an adult voice (OpenAI ships no child voice).
+- **Mechanics:** sync-mode predictions (`Prefer: wait`) with polling fallback; WAV outputs persisted on the private disk (`replicate/audio/{fingerprint}.wav`) with artifact reuse; the delivery CDN is fetched without the API token.
+
 ## Normalization & mixing
 
 Handled by the renderer ([VIDEO_RENDERING.md](VIDEO_RENDERING.md)): offsets via `adelay`, `amix`, music ducking, `loudnorm` — audio assets themselves are never modified destructively; the mix is computed at render time.

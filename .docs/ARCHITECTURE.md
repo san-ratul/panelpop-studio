@@ -69,6 +69,7 @@ A project owns multiple independent **videos** (`App\Models\Video`), each a comp
 
 - **Local development (Windows):** `QUEUE_CONNECTION=database` with `jobs/job_batches/failed_jobs` tables. Runs via one or more `php artisan queue:work` processes. Horizon is NOT usable on Windows (no `pcntl`) — it is an optional production extra, not a dependency.
 - **Production:** Redis + Supervisor-managed workers. Queues: `render` (heavy, serialized), `media` (images/TTS), `default` (story/plan/thumbnail). Documented in [DEPLOYMENT.md](DEPLOYMENT.md).
+- **One-click pipeline (2026-11-01):** `GenerateFullVideoJob` is a long-running orchestrator (per-video `WithoutOverlapping`, 7200 s timeout) that dispatches the normal stage jobs and waits on their generation-job rows — a worker must therefore stay alive for its full duration (`--timeout` ≥ 7200, no mid-pipeline worker cycling). More on the failure contract: [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) §5b.
 - Backoff: exponential with retry caps per job type; failed jobs recorded with actionable messages; no internal traces to UI ([SECURITY.md](SECURITY.md)).
 
 ## Storage

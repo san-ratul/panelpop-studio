@@ -3,6 +3,8 @@
 Status: implemented (commit d065ef2). Tests: tests/Unit/Render/FfmpegCommandBuilderTest,
 tests/Feature/Phase6/AnimationSettingsTest.php.
 
+> **Role clarification (2026-11-01):** this FFmpeg layered animation applies to the **still-image pipeline only**. In animated generation mode the primary scene animation is REAL AI video (`VideoProvider` — Replicate primary, Runway alternative; [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md)), and FFmpeg only assembles the generated clips (scale/crop to 1080×1920, fps normalize, trim/last-frame-hold, bubbles, unified audio mix). FFmpeg motion never substitutes for AI video in animated mode, and the still-image fallback is always clearly labeled as an illustrated (not AI-animated) render.
+
 ## Goal
 
 Rendered videos must feel noticeably more alive than a slideshow of stills, without external AI

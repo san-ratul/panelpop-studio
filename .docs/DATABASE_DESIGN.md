@@ -61,9 +61,11 @@ Indexes: `(project_id, sort_order)`, `(project_id, status)`. Uniqueness: none. D
 | id | pk | |
 | project_id | FK → projects.id, cascade | |
 | name | varchar(120) | |
+| age_years | unsigned tinyint nullable | **Explicit age metadata (2026-11-01, migration `2026_11_01_000001`)**: 1–120; drives age-band voice suggestions via `AgeVoiceResolver`. NULL = unknown — never inferred from names or appearance |
+| gender | varchar(10) nullable | **Explicit voice-casting metadata**: `female` \| `male` \| `neutral`; pairs with age for the suggestion. NULL = unspecified |
 | description | text | Structured description reused in prompts |
 | consistency_notes | text nullable | Style anchors for image prompts |
-| voice_config | JSON nullable | **Shape resolved in Phase 5 (D-026):** `{voice?: string≤120, instructions?: string≤4096, speed?: numeric 0.25–4.0}` — validated on write by `App\Rules\CharacterVoiceConfig` (unknown keys rejected); empty/null `voice` = provider-default fallback (`ai.openai.tts.default_voice`) |
+| voice_config | JSON nullable | **Shape resolved in Phase 5 (D-026), extended 2026-11-01:** `{voice?: string≤120, instructions?: string≤4096, speed?: numeric 0.25–4.0, emotion?: enum, pitch?: int −12…+12}` — the last two are the verified MiniMax (Replicate speech) delivery params, ignored by the OpenAI adapter; validated on write by `App\Rules\CharacterVoiceConfig` (unknown keys rejected); empty/null `voice` = provider-default fallback (`VoiceCatalog::defaultVoice()` follows the configured TTS provider) |
 | reference_asset_id | FK → assets.id, nullOnDelete | Character reference image |
 | timestamps | | |
 

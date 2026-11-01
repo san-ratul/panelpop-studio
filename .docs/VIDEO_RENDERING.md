@@ -2,6 +2,8 @@
 
 > Complete specification of the FFmpeg/FFmpeg-adjacent pipeline. Renderer owns all media assembly. Nothing here runs in an HTTP request.
 
+> **Automatic assembly (2026-11-01):** the one-click **Generate Video** pipeline dispatches this render automatically once every scene has its AI clip (animated mode) or image (still mode) — no manual render click. If a required scene has no clip in animated mode, the pipeline FAILS instead of rendering an incomplete video; the explicit still-mode render keeps its documented per-scene still fallback. FFmpeg's role is unchanged: assembly, audio mixing, captions, format conversion, final 9:16 render, thumbnail — still-image zoom/pan (`zoompan`/Ken Burns) is the **still-mode** scene animation, never a substitute for AI video in animated mode.
+
 ## Pipeline (ordered, each step verifiable)
 
 1. **Pre-flight validation** — project in renderable state; every scene `status=ready` with an existing image asset on disk; Σ scene durations within tolerance of target (30–90 s); audio assets present for all narration/dialogue when mode requires them; music/SFX pass the licence gate (`licence_verified=true`).

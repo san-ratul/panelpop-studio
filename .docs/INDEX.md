@@ -6,16 +6,16 @@ A web application that turns an English story into a short (30–90 s), vertical
 
 ## 2. Current Status
 
-**Phases 0–2 complete** (Laravel 13 app with domain model and provider abstraction; 172 passing tests). Phase 3 (story generation) is next — it requires resolving provider selection first (D-007, [reference/API_RESEARCH.md](reference/API_RESEARCH.md)).
+**Phases 0–7 complete and the AI animated-video overhaul implemented (2026-11-01)** — 636 passing tests. The pipeline generates stories, scenes, cartoon images, voices and — in animated mode — real AI scene videos, and assembles the final 9:16 MP4 automatically from ONE Generate Video action. Primary video/voice provider: **Replicate** (verified catalog; Runway alternative). **The remaining blocker is real-output staging: no Replicate credential exists on this machine** — see [PROGRESS.md](PROGRESS.md).
 
-**Current phase:** Phase 3 (Story generation) — awaiting user approval and provider verification.
+**Current phase:** staging validation of the animated pipeline (the final quality gate).
 **Next actionable task:** see [PROGRESS.md](PROGRESS.md).
 
 ## 3. MVP Scope (short form)
 
 Create project → enter or AI-generate story → structured scene plan → consistent cartoon character refs + scene images (AI) → editable review → optional narration/dialogue audio (AI TTS) → optional licensed music → FFmpeg render (pan/zoom, transitions, speech bubbles, captions) → validated MP4 + thumbnail + optional SRT → protected download. Silent mode works with zero AI credentials.
 
-Out of scope for MVP: social publishing automation, SaaS billing, public registration, AI video clips per scene. See [MVP_SCOPE.md](MVP_SCOPE.md).
+Out of scope for MVP: social publishing automation, SaaS billing, public registration. AI video clips per scene are now implemented (Replicate/Runway, animated mode). See [MVP_SCOPE.md](MVP_SCOPE.md).
 
 ## 4. Mandatory Technology Stack
 
@@ -23,7 +23,7 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 - Vue 3 + Inertia.js + Tailwind CSS 4 (shadcn-vue where appropriate)
 - **JavaScript only — TypeScript is forbidden**
 - Vite for assets; Laravel Queue (database driver local, Redis production)
-- FFmpeg + FFprobe (binaries currently MISSING on this machine — see [PROGRESS.md](PROGRESS.md) and [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md))
+- FFmpeg + FFprobe (installed 2026-10-28 via winget at `C:/ffmpeg/bin`; see [PROGRESS.md](PROGRESS.md) and [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md))
 
 ## 5. Non-Negotiable Rules (condensed — full list in [DEVELOPMENT_RULES.md](DEVELOPMENT_RULES.md))
 
@@ -49,7 +49,7 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 | [DATABASE_DESIGN.md](DATABASE_DESIGN.md) | You create migrations/models (PROPOSED schema) |
 | [PROVIDER_INTEGRATION.md](PROVIDER_INTEGRATION.md) | You work on AI provider code or credentials |
 | [VIDEO_ANIMATION.md](VIDEO_ANIMATION.md) | You work on layered FFmpeg scene animation or motion recipes |
-| [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) | You work on AI scene video (image-to-video), the Runway provider, scene motion planning, or animated-mode rendering |
+| [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) | You work on AI scene video (image-to-video), the Replicate/Runway providers, scene motion planning, the one-click Generate Video pipeline, or animated-mode rendering |
 | [VIDEO_ARCHITECTURE.md](VIDEO_ARCHITECTURE.md) | You touch the video domain model (multiple videos per project), video settings inheritance, or video-scoped routes/pipelines |
 | [VIDEO_RENDERING.md](VIDEO_RENDERING.md) | You work on FFmpeg pipeline, thumbnails, SRT |
 | [AUDIO_AND_LICENSING.md](AUDIO_AND_LICENSING.md) | You work on audio assets or licence gating |

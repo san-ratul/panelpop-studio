@@ -42,20 +42,32 @@
 ## Migration notes — AI scene video (2026-11-01)
 
 - Migration `2026_10_31_000001` is **additive/nullable**: `scenes` gains `video_asset_id`, `video_error_message`, `motion_action`, `motion_camera`, `motion_environment`. No data loss; nothing to backfill. Applied by the ordinary `php artisan migrate --force` step.
-- **New environment variables** (all optional — see [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md)):
+- **Migration `2026_11_01_000001`** (same release) is equally additive/nullable: `characters` gains `age_years` (1–120) and `gender` (`female`/`male`/`neutral`) — explicit voice-casting metadata; NULL = unknown, never inferred. No data loss; nothing to backfill.
+- **Environment variables** (all optional — see [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md)):
 
   | Variable | Default | Purpose |
   |---|---|---|
-  | `VIDEO_PROVIDER` | — (unset = no video provider) | `runway` enables AI scene video |
-  | `VIDEO_API_KEY` | — | Runway API key (bearer auth) |
-  | `VIDEO_MODEL` | `veo3.1_fast` | Default model; must exist in the verified catalog (`config/ai.php` `ai.runway.models`) |
-  | `VIDEO_POLL_INTERVAL_SECONDS` | `10` | Task-status poll cadence inside the queue job |
+  | `VIDEO_PROVIDER` | — (unset = no video provider) | `replicate` (primary) or `runway` enables AI scene video |
+  | `VIDEO_API_KEY` | — | Replicate API token (`r8_…`) or Runway API key (bearer auth) |
+  | `VIDEO_MODEL` | `wan-video/wan-2.5-i2v-fast` (replicate) / `veo3.1_fast` (runway) | Default model; must exist in the verified catalog |
+  | `REPLICATE_BASE_URL` | `https://api.replicate.com/v1` | API base (override only for testing/proxies) |
+  | `REPLICATE_POLL_INTERVAL_SECONDS` | `10` | Prediction poll cadence inside the queue job |
+  | `REPLICATE_POLL_TIMEOUT_SECONDS` | `600` | Hard poll ceiling — a stuck prediction fails the scene |
+  | `REPLICATE_TTS_VERSION` | pinned `minimax/speech-02-turbo` version | Reproducible speech predictions |
+  | `REPLICATE_TTS_DEFAULT_VOICE` | `English_CaptivatingStoryteller` | Narrator fallback voice (adult) |
+  | `REPLICATE_TTS_RESPONSE_FORMAT` | `wav` | Speech output format |
+  | `VIDEO_POLL_INTERVAL_SECONDS` | `10` | Runway task poll cadence inside the queue job |
   | `VIDEO_POLL_TIMEOUT_SECONDS` | `600` | Hard poll ceiling — a stuck task fails the scene instead of waiting forever |
   | `PROVIDER_TIMEOUT_VIDEO_SECONDS` | `900` | Per-request HTTP timeout for video-provider calls |
   | `RUNWAY_BASE_URL` | `https://api.dev.runwayml.com/v1` | Override only for testing/proxies |
+  | `TTS_PROVIDER` / `TTS_MODEL` | — / `minimax/speech-02-turbo` (replicate) | Speech provider; Replicate TTS uses the same `TTS_API_KEY` |
+  | `PIPELINE_POLL_INTERVAL_SECONDS` | `5` | One-click pipeline stage-wait cadence |
+  | `PIPELINE_STAGE_TIMEOUT_SECONDS` | `1800` | Per-stage ceiling before the pipeline fails (re-launch resumes) |
+  | `PIPELINE_STAGE_RETRIES` | `1` | Failed-subject retries per pipeline stage |
 
-- **No scheduler or queue changes** — the existing queue worker runs the new `GenerateSceneVideoJob` class; only `provider_calls` submission rows are billed (status polls are free GETs).
-- **Animated mode is opt-in per project/video** — effective generation mode defaults to `still`; `animated` must be selected explicitly in the video settings (AI video costs 10–20× the image pipeline).
+- **Queue:** the one-click pipeline runs as a LONG-RUNNING queue job (`GenerateFullVideoJob`, per-video `WithoutOverlapping`, 7200 s timeout) that internally waits on its stage rows — run at least one long-lived `queue:work` with `--timeout` ≥ 7200 (and don't cycle workers mid-pipeline). Stage jobs share the same queue; more workers are faster, one is safe. Scene-video submissions are billed ledger rows; status polls are free GETs.
+- **Storage:** generated clips/audio are downloaded from the provider within seconds (Replicate deletes API outputs after ~1 hour; Runway task URLs are temporary) and persisted on the private disk — `media-private` needs durable object storage in production; provider URLs are never referenced as artifacts.
+- **Animated mode stays opt-in** — effective generation mode defaults to `still`; the one-click Generate Video dialog explicitly shows the mode (animated = AI video cost) before the single confirmation.
 
 ## Scheduled maintenance
 
