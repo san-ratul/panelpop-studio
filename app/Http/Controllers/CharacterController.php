@@ -9,6 +9,7 @@ use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Http\Requests\CharacterRequest;
 use App\Models\Character;
 use App\Models\Project;
+use App\Services\AgeVoiceResolver;
 use App\Services\GenerationJobGuard;
 use App\Services\VoicePreviewService;
 use Illuminate\Http\RedirectResponse;
@@ -64,6 +65,8 @@ class CharacterController extends Controller
             'voiceGroups' => VoiceCatalog::voiceGroups(),
             'stylePresets' => VoiceCatalog::stylePresets(),
             'defaultVoice' => VoiceCatalog::defaultVoice(),
+            'voiceHonestyNote' => VoiceCatalog::honestyNote(),
+            'ageSuggestion' => AgeVoiceResolver::suggest($character->age_years, $character->gender),
         ]);
     }
 
@@ -166,6 +169,8 @@ class CharacterController extends Controller
         return [
             'id' => $character->id,
             'name' => $character->name,
+            'age_years' => $character->age_years,
+            'gender' => $character->gender,
             'description' => $character->description,
             'consistency_notes' => $character->consistency_notes,
             'voice_config' => $character->voice_config,

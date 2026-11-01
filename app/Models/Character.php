@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'project_id',
     'name',
+    'age_years',
+    'gender',
     'description',
     'consistency_notes',
     'voice_config',
@@ -26,6 +28,7 @@ class Character extends Model
     {
         return [
             'voice_config' => 'array',
+            'age_years' => 'integer',
         ];
     }
 

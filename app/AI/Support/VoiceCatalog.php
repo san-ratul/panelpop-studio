@@ -141,6 +141,20 @@ final class VoiceCatalog
     }
 
     /**
+     * Honest, provider-aware voice-capability note shown next to the voice
+     * picker (VOICES honesty rules): never advertise a child voice that the
+     * configured provider cannot actually produce.
+     */
+    public static function honestyNote(): string
+    {
+        if ((string) config('ai.env.tts.provider') === 'replicate') {
+            return 'Youthful-leaning system voices are offered for young characters. Their labels say "unverified" until real samples confirm the child-likeness — always preview the voice before relying on it.';
+        }
+
+        return 'The built-in voices have no child voice — pick any voice plus a "Youthful" style to bias the delivery toward a childlike performance (adult voice, childlike delivery).';
+    }
+
+    /**
      * Groups a configured voice-id list with presentation metadata; voices
      * missing from the metadata map land under "Other voices".
      *

@@ -1,10 +1,11 @@
 <script setup>
 import { Link, useForm, usePage } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { ref, watch } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import BaseButton from '@/Components/Form/BaseButton.vue';
 import CharacterVoicePicker from '@/Components/CharacterVoicePicker.vue';
 import FieldError from '@/Components/Form/FieldError.vue';
+import SelectInput from '@/Components/Form/SelectInput.vue';
 import TextArea from '@/Components/Form/TextArea.vue';
 import TextInput from '@/Components/Form/TextInput.vue';
 import { createRouteResolver } from '@/route.js';
@@ -33,6 +34,14 @@ const props = defineProps({
     defaultVoice: {
         type: String,
         default: 'alloy',
+    },
+    voiceHonestyNote: {
+        type: String,
+        default: '',
+    },
+    ageSuggestion: {
+        type: Object,
+        default: null,
     },
 });
 
@@ -64,12 +73,35 @@ const savedInstructions = (props.character.voice_config?.instructions ?? '').tri
 
 const form = useForm({
     name: props.character.name,
+    age_years: props.character.age_years ?? '',
+    gender: props.character.gender ?? '',
     description: props.character.description,
     consistency_notes: props.character.consistency_notes ?? '',
     voice: props.character.voice_config?.voice ?? '',
     style: detectStylePreset(savedInstructions),
     instructions: savedInstructions,
 });
+
+// Explicit age + gender metadata drive the voice suggestion (never inferred
+// from the name or appearance).
+watch(
+    [() => form.age_years, () => form.gender],
+    () => {
+        suggestion.value = null;
+    },
+);
+
+const suggestion = ref(props.ageSuggestion);
+
+function applySuggestion() {
+    if (suggestion.value?.voice) {
+        form.voice = suggestion.value.voice;
+    }
+
+    if (suggestion.value?.style_preset) {
+        form.style = suggestion.value.style_preset;
+    }
+}
 
 // Picking a style preset derives the saved instructions from it; "custom"
 // (only reachable when the saved instructions match no preset) keeps them.
@@ -92,11 +124,17 @@ function submit() {
     form
         .transform((data) => ({
             name: data.name,
+            age_years: data.age_years === '' ? null : Number(data.age_years),
+            gender: data.gender === '' ? null : data.gender,
             description: data.description,
             consistency_notes: data.consistency_notes,
             voice_config: {
                 voice: data.voice === '' ? null : data.voice,
                 instructions: instructions === '' ? null : instructions,
+                // Provider-specific delivery params preserved from the
+                // saved config (Replicate/MiniMax emotion + pitch).
+                emotion: props.character.voice_config?.emotion ?? null,
+                pitch: props.character.voice_config?.pitch ?? null,
             },
         }))
         .patch(route('characters.update', [props.project.id, props.character.id]));
@@ -136,6 +174,52 @@ function submit() {
                 required
                 :error="form.errors.description"
             />
+            <div class="grid grid-cols-2 gap-3">
+                <TextInput
+                    id="age_years"
+                    v-model="form.age_years"
+                    type="number"
+                    label="Age (years)"
+                    min="1"
+                    max="120"
+                    description="Explicit metadata used to suggest a voice — never inferred from the name."
+                    :error="form.errors.age_years"
+                />
+                <SelectInput
+                    id="gender"
+                    v-model="form.gender"
+                    label="Voice casting"
+                    description="Explicit metadata used to suggest a voice."
+                    :error="form.errors.gender"
+                >
+                    <option value="">
+                        Unspecified
+                    </option>
+                    <option value="female">
+                        Female-sounding voice
+                    </option>
+                    <option value="male">
+                        Male-sounding voice
+                    </option>
+                    <option value="neutral">
+                        Neutral voice
+                    </option>
+                </SelectInput>
+            </div>
+            <div
+                v-if="suggestion"
+                class="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800"
+            >
+                <p>{{ suggestion.note }}</p>
+                <button
+                    v-if="suggestion.voice || suggestion.style_preset"
+                    type="button"
+                    class="mt-2 text-xs font-semibold text-indigo-700 underline hover:text-indigo-900"
+                    @click="applySuggestion"
+                >
+                    Apply suggestion to the voice form
+                </button>
+            </div>
             <TextArea
                 id="consistency_notes"
                 v-model="form.consistency_notes"
@@ -150,9 +234,7 @@ function submit() {
                 </legend>
                 <p class="text-sm text-gray-600">
                     Used whenever this character speaks a dialogue line. Leave the voice
-                    empty to use the provider default ({{ defaultVoice }}). The documented
-                    voices have no child voice — pick any voice plus a "Kids voice" style
-                    to make it sound child-like.
+                    empty to use the provider default ({{ defaultVoice }}). {{ voiceHonestyNote }}
                 </p>
                 <CharacterVoicePicker
                     v-model:voice="form.voice"

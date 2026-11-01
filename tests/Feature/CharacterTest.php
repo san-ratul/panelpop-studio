@@ -198,4 +198,46 @@ class CharacterTest extends TestCase
 
         $this->assertTrue($character->refresh()->exists);
     }
+
+    public function test_explicit_age_and_gender_metadata_are_saved_and_drive_the_edit_page_suggestion(): void
+    {
+        config(['ai.env.tts.provider' => 'replicate']);
+
+        $user = User::factory()->create();
+        $project = Project::factory()->for($user)->create();
+        $character = Character::factory()->for($project)->create(['name' => 'Pip']);
+
+        $this->actingAs($user)
+            ->patch(route('characters.update', [$project, $character]), $this->validPayload([
+                'age_years' => 6,
+                'gender' => 'female',
+            ]))
+            ->assertRedirect(route('characters.index', $project));
+
+        $character->refresh();
+
+        $this->assertSame(6, $character->age_years);
+        $this->assertSame('female', $character->gender);
+
+        // The edit page exposes the age-based voice suggestion and the
+        // provider-honest capability note (never a fake child-voice claim).
+        $response = $this->actingAs($user)
+            ->get(route('characters.edit', [$project, $character]));
+
+        $response->assertOk();
+
+        $props = $response->getOriginalContent()->getData()['page']['props'] ?? null;
+
+        $this->assertSame('English_PlayfulGirl', $props['ageSuggestion']['voice'] ?? null);
+        $this->assertStringContainsString('unverified', $props['ageSuggestion']['note'] ?? '');
+        $this->assertStringContainsString('unverified', $props['voiceHonestyNote'] ?? '');
+
+        // Invalid metadata is rejected.
+        $this->actingAs($user)
+            ->patch(route('characters.update', [$project, $character]), $this->validPayload([
+                'age_years' => 300,
+                'gender' => 'dragon',
+            ]))
+            ->assertSessionHasErrors(['age_years', 'gender']);
+    }
 }

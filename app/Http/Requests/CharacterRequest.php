@@ -28,6 +28,11 @@ class CharacterRequest extends FormRequest
                 Rule::unique(Character::class)->where('project_id', $project instanceof Project ? $project->id : 0)->ignore($character),
             ],
             'description' => ['required', 'string', 'max:5000'],
+            // Explicit age + gender metadata drive voice suggestions
+            // (VOICES honesty rules). Missing = "no suggestion", never an
+            // inferred default.
+            'age_years' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:120'],
+            'gender' => ['sometimes', 'nullable', 'string', Rule::in(['female', 'male', 'neutral'])],
             'consistency_notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'voice_config' => ['sometimes', 'nullable', 'array', new CharacterVoiceConfig],
         ];
