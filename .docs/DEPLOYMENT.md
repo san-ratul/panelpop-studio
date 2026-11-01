@@ -39,6 +39,24 @@
 - New **optional** environment variable: `FFMPEG_ANIMATION_ENABLED` (default `true`) — master switch for the layered scene animation; per-video/project settings override it at runtime.
 - No queue, scheduler, or worker changes.
 
+## Migration notes — AI scene video (2026-11-01)
+
+- Migration `2026_10_31_000001` is **additive/nullable**: `scenes` gains `video_asset_id`, `video_error_message`, `motion_action`, `motion_camera`, `motion_environment`. No data loss; nothing to backfill. Applied by the ordinary `php artisan migrate --force` step.
+- **New environment variables** (all optional — see [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md)):
+
+  | Variable | Default | Purpose |
+  |---|---|---|
+  | `VIDEO_PROVIDER` | — (unset = no video provider) | `runway` enables AI scene video |
+  | `VIDEO_API_KEY` | — | Runway API key (bearer auth) |
+  | `VIDEO_MODEL` | `veo3.1_fast` | Default model; must exist in the verified catalog (`config/ai.php` `ai.runway.models`) |
+  | `VIDEO_POLL_INTERVAL_SECONDS` | `10` | Task-status poll cadence inside the queue job |
+  | `VIDEO_POLL_TIMEOUT_SECONDS` | `600` | Hard poll ceiling — a stuck task fails the scene instead of waiting forever |
+  | `PROVIDER_TIMEOUT_VIDEO_SECONDS` | `900` | Per-request HTTP timeout for video-provider calls |
+  | `RUNWAY_BASE_URL` | `https://api.dev.runwayml.com/v1` | Override only for testing/proxies |
+
+- **No scheduler or queue changes** — the existing queue worker runs the new `GenerateSceneVideoJob` class; only `provider_calls` submission rows are billed (status polls are free GETs).
+- **Animated mode is opt-in per project/video** — effective generation mode defaults to `still`; `animated` must be selected explicitly in the video settings (AI video costs 10–20× the image pipeline).
+
 ## Scheduled maintenance
 
 - Stale `running` job sweeper + intermediate-file cleanup (scheduler; defined in Phase 6/7)

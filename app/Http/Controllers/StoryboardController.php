@@ -9,6 +9,7 @@ use App\Enums\StoryStatus;
 use App\Exceptions\DomainValidationException;
 use App\Http\Controllers\Support\GenerationJobPresenter;
 use App\Models\Project;
+use App\Models\Scene;
 use App\Models\Video;
 use App\Services\DialogueVoiceAssignmentService;
 use App\Services\DurationValidator;

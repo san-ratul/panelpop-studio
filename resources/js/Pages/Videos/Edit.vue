@@ -48,7 +48,17 @@ const form = useForm({
     animation: props.video.settings?.animation?.enabled === undefined
         ? ''
         : (props.video.settings.animation.enabled ? '1' : '0'),
+    generation_mode: props.video.generation_mode_override ?? '',
+    video_model: props.video.video_model_override ?? '',
 });
+
+const videoModels = [
+    { value: 'veo3.1_fast', label: 'Veo 3.1 Fast — native audio + speech', rate: 0.15 },
+    { value: 'kling3.0_standard', label: 'Kling 3.0 Standard — optional audio', rate: 0.13 },
+    { value: 'wan3', label: 'WAN 3.0 (720p) — native audio', rate: 0.10 },
+    { value: 'gen4_turbo', label: 'Gen-4 Turbo — silent (lowest cost)', rate: 0.05 },
+    { value: 'gen4.5', label: 'Gen-4.5 — silent, high quality', rate: 0.12 },
+];
 
 function submit() {
     const baseSettings = { ...(props.video.settings ?? {}) };
@@ -59,6 +69,18 @@ function submit() {
         delete baseSettings.animation;
     } else {
         baseSettings.animation = { enabled: form.animation === '1' };
+    }
+
+    if (form.generation_mode === '') {
+        delete baseSettings.generation_mode;
+    } else {
+        baseSettings.generation_mode = form.generation_mode;
+    }
+
+    if (form.video_model === '') {
+        delete baseSettings.video_model;
+    } else {
+        baseSettings.video_model = form.video_model;
     }
 
     form
@@ -213,6 +235,54 @@ function resetOverrides() {
                 >
                     Reset all to project defaults
                 </button>
+            </fieldset>
+
+            <fieldset class="space-y-4 rounded-lg border border-gray-200 p-4">
+                <legend class="px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    AI animation
+                </legend>
+
+                <SelectInput
+                    id="generation_mode"
+                    v-model="form.generation_mode"
+                    label="Generation mode"
+                    :error="form.errors.settings"
+                >
+                    <option value="">
+                        Project default ({{ video.generation_mode === 'animated' ? 'AI animated video' : 'Still images' }})
+                    </option>
+                    <option value="still">
+                        Still images (FFmpeg motion)
+                    </option>
+                    <option value="animated">
+                        AI animated video (image-to-video)
+                    </option>
+                </SelectInput>
+
+                <SelectInput
+                    id="video_model"
+                    v-model="form.video_model"
+                    label="AI video model"
+                    :error="form.errors.settings"
+                >
+                    <option value="">
+                        Project default ({{ video.video_model }})
+                    </option>
+                    <option
+                        v-for="model in videoModels"
+                        :key="model.value"
+                        :value="model.value"
+                    >
+                        {{ model.label }} — ${{ model.rate.toFixed(2) }}/s
+                        {{ model.value === video.video_model_override ? '— current override' : '' }}
+                    </option>
+                </SelectInput>
+
+                <p class="text-sm text-gray-500">
+                    AI animated video generates a short clip per scene (about $0.60–$1.20 per scene, $3–$10 per
+                    finished video depending on the model and scene lengths). Still-image mode stays the low-cost
+                    default.
+                </p>
             </fieldset>
 
             <div class="flex flex-wrap gap-3">

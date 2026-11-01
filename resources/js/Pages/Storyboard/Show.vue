@@ -55,6 +55,14 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    videoJobs: {
+        type: Array,
+        default: () => [],
+    },
+    videoJobActive: {
+        type: Boolean,
+        default: false,
+    },
     referenceJobs: {
         type: Array,
         default: () => [],
@@ -128,13 +136,34 @@ const completeForm = useForm({});
 const reorderForm = useForm({});
 const planForm = useForm({});
 const imageForm = useForm({});
+const videoForm = useForm({});
 const assignVoicesForm = useForm({});
 
 const latestPlanJob = computed(() => props.planJobs[0] ?? null);
 
-const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.referenceJobActive || props.voiceJobActive);
+const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.videoJobActive || props.referenceJobActive || props.voiceJobActive);
 
 const assignVoicesBusy = computed(() => assignVoicesForm.processing || props.voiceJobActive);
+
+const videoModelRates = {
+    'veo3.1_fast': 0.15,
+    'kling3.0_standard': 0.13,
+    wan3: 0.10,
+    gen4_turbo: 0.05,
+    'gen4.5': 0.12,
+};
+
+const videoCostEstimate = computed(() => {
+    if (props.scenes.length === 0) {
+        return null;
+    }
+
+    const averageSeconds = props.scenes.reduce((total, scene) => total + scene.duration_seconds, 0) / props.scenes.length;
+    const rate = videoModelRates[props.video.video_model] ?? 0;
+    const cost = rate * Math.ceil(averageSeconds) * props.scenes.length;
+
+    return `~$${cost.toFixed(2)} for ${props.scenes.length} scene(s) (model ${props.video.video_model})`;
+});
 
 function submitAddScene() {
     addSceneForm.post(route('scenes.store', [props.project.id, props.video.id]), {
@@ -199,6 +228,13 @@ function generateImages() {
     });
 }
 
+function generateVideos() {
+    videoForm.post(route('storyboard.generate-videos', [props.project.id, props.video.id]), {
+        preserveScroll: true,
+        onSuccess: () => startPolling(),
+    });
+}
+
 function assignVoices() {
     // The assignment runs synchronously and redirects back here — keep the
     // scroll position so the user does not lose their place in the scenes.
@@ -213,6 +249,13 @@ function generateSceneImage(scene) {
     });
 }
 
+function generateSceneVideo(scene) {
+    useForm({}).post(route('scenes.generate-video', [props.project.id, props.video.id, scene.id]), {
+        preserveScroll: true,
+        onSuccess: () => startPolling(),
+    });
+}
+
 const pollTimer = ref(null);
 
 function startPolling() {
@@ -222,7 +265,7 @@ function startPolling() {
 
     pollTimer.value = setInterval(() => {
         router.reload({
-            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'referenceJobs', 'referenceJobActive', 'voiceJobs', 'voiceJobActive', 'scenes', 'characters', 'durationTotal'],
+            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'videoJobs', 'videoJobActive', 'referenceJobs', 'referenceJobActive', 'voiceJobs', 'voiceJobActive', 'scenes', 'characters', 'durationTotal'],
         });
     }, 3000);
 }
@@ -294,6 +337,14 @@ if (anyJobActive.value) {
                     {{ imageJobActive || referenceJobActive ? 'Generating images…' : 'Generate scene images' }}
                 </BaseButton>
                 <BaseButton
+                    variant="outline"
+                    :disabled="videoForm.processing || videoJobActive || video.generation_mode !== 'animated' || scenes.length === 0"
+                    :title="video.generation_mode !== 'animated' ? 'Switch the generation mode to AI animated video in the video settings' : (scenes.length === 0 ? 'Generate or add a scene plan first' : '')"
+                    @click="generateVideos"
+                >
+                    {{ videoJobActive ? 'Animating…' : 'Animate scenes with AI' }}
+                </BaseButton>
+                <BaseButton
                     :disabled="completeForm.processing"
                     @click="completeStoryboard"
                 >
@@ -302,11 +353,20 @@ if (anyJobActive.value) {
             </div>
         </div>
 
+        <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+            <p v-if="video.generation_mode !== 'animated'">
+                Switch the generation mode to AI animated video in the video settings
+            </p>
+            <p v-if="videoCostEstimate">
+                Estimated cost: {{ videoCostEstimate }}
+            </p>
+        </div>
+
         <p
-            v-if="planForm.errors.plan || imageForm.errors.images || assignVoicesForm.errors.voices"
+            v-if="planForm.errors.plan || imageForm.errors.images || videoForm.errors.videos || assignVoicesForm.errors.voices"
             class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-            {{ planForm.errors.plan || imageForm.errors.images || assignVoicesForm.errors.voices }}
+            {{ planForm.errors.plan || imageForm.errors.images || videoForm.errors.videos || assignVoicesForm.errors.voices }}
         </p>
 
         <div
@@ -387,6 +447,32 @@ if (anyJobActive.value) {
             <div class="flex items-center justify-between gap-3">
                 <span class="font-medium capitalize">
                     Scene image #{{ job.id }}<template v-if="job.payload?.scene_number"> — scene {{ job.payload.scene_number }}</template> — {{ job.status.replaceAll('_', ' ') }}
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
+            </p>
+        </div>
+
+        <div
+            v-for="job in videoJobs"
+            :key="`video-${job.id}`"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-200 bg-indigo-50 text-indigo-700': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex items-center justify-between gap-3">
+                <span class="font-medium capitalize">
+                    AI animation #{{ job.id }}<template v-if="job.payload?.scene_number"> — scene {{ job.payload.scene_number }}</template> — {{ job.status.replaceAll('_', ' ') }}
                 </span>
                 <span class="text-xs text-gray-500">
                     attempt {{ job.attempts }}/{{ job.max_attempts }}
@@ -526,6 +612,27 @@ if (anyJobActive.value) {
                             class="text-xs text-red-600"
                         >
                             {{ scene.error_message }}
+                        </p>
+                        <button
+                            v-if="scene.has_image"
+                            type="button"
+                            class="text-xs font-medium"
+                            :class="scene.video_error_message ? 'text-red-600 hover:text-red-800' : 'text-indigo-600 hover:text-indigo-800'"
+                            @click="generateSceneVideo(scene)"
+                        >
+                            {{ scene.has_clip ? 'Re-animate' : 'Animate' }}
+                        </button>
+                        <span
+                            v-if="scene.has_clip"
+                            class="inline-flex items-center gap-1 self-start rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                        >
+                            AI clip<template v-if="scene.clip_model"> · {{ scene.clip_model }}</template>
+                        </span>
+                        <p
+                            v-if="scene.video_error_message"
+                            class="text-xs text-red-600"
+                        >
+                            {{ scene.video_error_message }}
                         </p>
                     </div>
                     <dl class="space-y-1 text-sm text-gray-700">

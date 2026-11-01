@@ -1,6 +1,6 @@
 # Cost Accounting — Audit, Model, and Analytics
 
-> **Status: Implemented (2026-10-29); updated 2026-10-31 (TTS estimate refinement, video-scoped attribution, strict buckets).** Full audit of how every generated video accrues provider and infrastructure cost, the auditable cost model now enforced by the ledger, exact formulas, and the limits of what can be known. Pricing sources and verification dates: [reference/API_RESEARCH.md](reference/API_RESEARCH.md). Operational practices: [COST_MANAGEMENT.md](COST_MANAGEMENT.md). Ledger validation against real data: [COST_RECONCILIATION.md](COST_RECONCILIATION.md).
+> **Status: Implemented (2026-10-29); updated 2026-10-31 (TTS estimate refinement, video-scoped attribution, strict buckets); updated 2026-11-01 (AI scene video `scene_video` operation).** Full audit of how every generated video accrues provider and infrastructure cost, the auditable cost model now enforced by the ledger, exact formulas, and the limits of what can be known. Pricing sources and verification dates: [reference/API_RESEARCH.md](reference/API_RESEARCH.md) (OpenAI) and [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) (Runway). Operational practices: [COST_MANAGEMENT.md](COST_MANAGEMENT.md). Ledger validation against real data: [COST_RECONCILIATION.md](COST_RECONCILIATION.md).
 
 ## 1. Architecture audit (what existed before this change)
 
@@ -19,6 +19,7 @@ Every provider call writes one `provider_calls` row per attempt via `ProviderGat
 | Character references | `GenerateCharacterReferenceJob` ×N | image (`images/generations`) | 1 per attempt per character |
 | Scene images (edits with reference input) | `GenerateSceneImageJob` ×N | image (`images/edits`) | 1 per attempt per scene |
 | Narration / dialogue TTS | `GenerateVoiceJob` ×N | tts (`audio/speech`) | 1 per attempt per subject |
+| AI scene video (image-to-video) | `GenerateSceneVideoJob` ×N | video (Runway `image_to_video`) | 1 per submission attempt per scene — **status polls are free GETs and write nothing** |
 | Video metadata | `VideoMetadataService` | text | 1 per attempt |
 | Render (FFmpeg, local) | `RenderVideoJob` | none | 0 (infra only) |
 | Music / SFX | — (AI music disabled, D-007) | music | 0 (future category) |
@@ -42,7 +43,7 @@ Every provider call writes one `provider_calls` row per attempt via `ProviderGat
 |---|---|
 | `user_id` | Denormalized owner (from `projects.user_id`) for per-user analytics |
 | `video_id` | Owning video for video-scoped calls (nullable, FK → videos, migration `2026_10_30_000002`) — the exact per-video attribution key; project-shared calls (character references) and legacy rows stay NULL |
-| `operation` | `ProviderOperation`: story, scene_planning, video_metadata, character_reference, scene_image, narration_tts, dialogue_tts, music_generation |
+| `operation` | `ProviderOperation`: story, scene_planning, video_metadata, character_reference, scene_image, narration_tts, dialogue_tts, music_generation, scene_video |
 | `attempt` | 1-based attempt index within one gateway call (each attempt = own row) |
 | `provider_request_id` | Provider response id (e.g. OpenAI `resp_...`) for invoice reconciliation |
 | `rate_version` | Pinned price-list key, e.g. `openai-image-2026-10-28` |
@@ -87,6 +88,7 @@ All rates: USD per 1M tokens, from [reference/API_RESEARCH.md](reference/API_RES
 | Story / plan / metadata (text) | `input_tokens × input_rate/1M + output_tokens × output_rate/1M` (gpt-6.1-terra: $1.00 / $5.00) |
 | Character reference / scene image | `text_tokens × text_input/1M + image_tokens × image_input/1M + output_tokens × image_output/1M` (gpt-image-2.5-flare: $5 / $8 / $30) |
 | TTS narration / dialogue | actual: not computable (no usage payload). Estimate: pre-call bound (input chars/4 + 16 input tokens × $0.60/1M + 25,000 audio-output tokens × $12.00/1M) **kept only for the BudgetGuard ceiling**; after the artifact is measured, `TtsEstimateRefiner` replaces the stored estimate with `ceil(duration_seconds × 50)` audio-output tokens × $12.00/1M (`calculation_method = measured_duration_x_list_rates`; τ = `ai.openai.tts.estimate_audio_tokens_per_second`) |
+| AI scene video (`scene_video`) | estimate: `clip seconds × verified model rate` (`RunwayCostEstimator` — credits/s from the verified catalog × $0.01; unknown model ⇒ no estimate, never guessed). actual: not computable (the aggregation API reports no usage payload) — rows stay confirmed-estimate. Status polls are free and never billed. Pricing table: [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) §2 |
 | Music (future) | `music_generation` operation + `music` rates branch in `RateRepository`; priced via the same calculator when a vendor is verified |
 | Render infrastructure | `render_wall_seconds × COST_RENDER_PER_WALL_SECOND_USD` (measured from `generation_jobs.started_at→finished_at`) |
 | Storage | `stored_artifact_bytes / 1GiB × COST_STORAGE_PER_GB_MONTH_USD / 30` per day (measured from retained asset bytes: video + thumbnail + SRT) |
@@ -100,6 +102,8 @@ video_total = Σ provider_calls(actual) + Σ provider_calls(estimate-only)
 ```
 
 **TTS estimate refinement (`App\AI\Cost\TtsEstimateRefiner`, 2026-10-31):** the Speech API reports no usage, so every TTS row originally stored the conservative request ceiling (25,000 audio tokens ≈ $0.30/call) as its estimate, while real clips measure a few seconds (~200–800 audio tokens ≈ $0.003–0.02). Once `VoiceAudioPersister` measures the artifact (`duration_ms` from the WAV header), the successful row's estimate is replaced by `ceil(duration_seconds × τ)` audio tokens priced at the pinned `audio_output` list rate (`calculation_method = measured_duration_x_list_rates`, τ = `ai.openai.tts.estimate_audio_tokens_per_second` = 50). The row **remains `cost_type = estimate`** (still not provider-reported). `BudgetGuard` keeps the pre-call ceiling on purpose — a conservative bound that exists before the audio does. Validation against the real ledger (26 TTS rows corrected from ≈$7.80 of ceilings to cents): [COST_RECONCILIATION.md](COST_RECONCILIATION.md).
+
+**AI scene video (`scene_video`, 2026-11-01):** each `GenerateSceneVideoJob` submission attempt writes one billable ledger row via the gateway with the pre-call estimate = `ceil(scene duration) seconds × verified per-second rate` (`RunwayCostEstimator`, audio-on catalog rate; Runway-side credit rounding can differ by ≤ 1 credit/generation). The job's internal status polls are **free API calls and deliberately bypass the billing ledger** — only submission is billable. Attribution rides `provider_calls.video_id` (the job passes the video id in its call context), so clips land in the per-video cost views like every other video-scoped operation. The aggregation API reports no usage payload, so — like TTS — rows remain `cost_type = estimate` with `charge_status = confirmed`; reconcile against the Runway dashboard (the remote task id is stored in the asset/job payload). Verified rates + worked example (60 s ≈ $3.00–$9.00 depending on model vs ≈ $0.60 still): [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) §2/§6.
 
 **Attribution / double-counting rules (updated 2026-10-31 — video-scoped):** provider ledger costs are attributed via `provider_calls.video_id`: video-scoped rows count **once per video** (to the video's earliest completed render in the window), so re-renders never repeat provider dollars; project-shared rows (character references, legacy) form a separate `project_shared` component attributed once per project. This replaces the Phase 8 project-level rule (the full project-wide provider cost repeated on every completed render; those rows carried `provider cost counted under render #id`). Retained-artifact storage and download metrics stay attributed once per project; render infrastructure is measured per render (own wall seconds) and always attributed to that render alone. Provider components are additionally broken out per operation (story / scene_planning / character_reference / scene_image / tts / video_metadata / unclassified legacy).
 
@@ -128,6 +132,7 @@ Admin area (Phase 8) — every route gated by the `admin` Gate (`users.is_admin`
 6. **Estimates are deliberately conservative upper bounds** (estimator constants in `config/ai.php`); they exist for the budget ceiling, and analytics never sums them into "actual".
 7. Legacy rows created before migration 2026_10_29_000001 have `NULL` operation/cost_type/charge_status and `attempt = 1`; `spentToday()` (BudgetGuard) and the analytics treat missing cost_type safely (NULL cost_type rows are excluded from the estimate-spend sums; their `cost_actual` still counts). They surface as the filterable `unclassified` bucket in the detailed report.
 8. **Per-video attribution is video-scoped (updated 2026-10-31):** video-scoped provider costs are attributed to the video's earliest completed render in the window via `provider_calls.video_id`; project-shared rows (character references, legacy) are a separate `project_shared` component attributed once per project. A date-filtered report can therefore show a project's provider cost even when the calls themselves predate the window (deliberate — the video consumed them). *(Supersedes the Phase 8 project-level attribution rule.)*
+9. **AI scene video actual cost is not computable (2026-11-01)** — the Runway aggregation API reports no usage payload, so `scene_video` rows stay confirmed-charge/estimated-amount (pre-call `clip seconds × verified rate`); the estimate can deviate slightly from the dashboard (credit rounding ≤ 1 credit/generation; provider-side retries). Reconciliation is manual against the Runway dashboard ([VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) §6/§11).
 
 ## 6. SaaS pricing readiness (inspection, no billing implemented)
 

@@ -48,7 +48,8 @@ Out of scope for MVP: social publishing automation, SaaS billing, public registr
 | [FRONTEND_UI.md](FRONTEND_UI.md) | You touch forms, controls, or buttons in Vue pages |
 | [DATABASE_DESIGN.md](DATABASE_DESIGN.md) | You create migrations/models (PROPOSED schema) |
 | [PROVIDER_INTEGRATION.md](PROVIDER_INTEGRATION.md) | You work on AI provider code or credentials |
-| [VIDEO_ANIMATION.md](VIDEO_ANIMATION.md) | You work on layered FFmpeg scene animation, motion recipes, or the image-to-video provider contract |
+| [VIDEO_ANIMATION.md](VIDEO_ANIMATION.md) | You work on layered FFmpeg scene animation or motion recipes |
+| [VIDEO_GENERATION_AI.md](VIDEO_GENERATION_AI.md) | You work on AI scene video (image-to-video), the Runway provider, scene motion planning, or animated-mode rendering |
 | [VIDEO_ARCHITECTURE.md](VIDEO_ARCHITECTURE.md) | You touch the video domain model (multiple videos per project), video settings inheritance, or video-scoped routes/pipelines |
 | [VIDEO_RENDERING.md](VIDEO_RENDERING.md) | You work on FFmpeg pipeline, thumbnails, SRT |
 | [AUDIO_AND_LICENSING.md](AUDIO_AND_LICENSING.md) | You work on audio assets or licence gating |
