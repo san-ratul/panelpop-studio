@@ -47,6 +47,17 @@ return [
         'jitter_ratio' => 0.25,
     ],
 
+    // One-click full-video pipeline (VIDEO_GENERATION_AI.md section 6).
+    // The orchestrator dispatches the normal stage jobs and waits on their
+    // generation-job rows; failures retry each stage once before the whole
+    // pipeline fails loudly (a required scene missing is never silently
+    // omitted from the final video).
+    'pipeline' => [
+        'poll_interval_seconds' => (int) env('PIPELINE_POLL_INTERVAL_SECONDS', 5),
+        'stage_timeout_seconds' => (int) env('PIPELINE_STAGE_TIMEOUT_SECONDS', 1800),
+        'stage_retries' => max(0, (int) env('PIPELINE_STAGE_RETRIES', 1)),
+    ],
+
     'timeouts' => [
         'text' => (int) env('PROVIDER_TIMEOUT_TEXT_SECONDS', 60),
         'image' => (int) env('PROVIDER_TIMEOUT_IMAGE_SECONDS', 300),

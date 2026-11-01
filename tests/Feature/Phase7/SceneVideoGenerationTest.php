@@ -133,7 +133,10 @@ class SceneVideoGenerationTest extends TestCase
         config(['ai.runway.poll_interval_seconds' => 1]);
         Sleep::fake();
 
+        // Hybrid: dialogue lines are voiced in this mode, so the native
+        // speech request carries them (narrator mode would exclude dialogue).
         $video = $this->makeAnimatedVideo();
+        $video->update(['presentation_mode_override' => PresentationMode::Hybrid]);
         $scene = $video->scenes()->first();
         $character = Character::factory()->for($this->project)->create(['name' => 'Robby']);
         $scene->dialogueLines()->create([
@@ -222,6 +225,7 @@ class SceneVideoGenerationTest extends TestCase
             ->create();
 
         $video = $this->makeAnimatedVideo();
+        $video->update(['presentation_mode_override' => PresentationMode::Hybrid]);
         $scene = $video->scenes()->first();
         $character = Character::factory()->for($this->project)->create(['name' => 'Robby']);
         $scene->dialogueLines()->create([
@@ -502,5 +506,171 @@ class SceneVideoGenerationTest extends TestCase
 
         $response->assertForbidden();
         $this->assertSame(0, $video->generationJobs()->where('type', 'scene_video')->count());
+    }
+
+    // ------------------------------------------------------------------
+    // Audio-input lip sync (wan-2.5 on Replicate): a scene whose dialogue
+    // TTS audio is ready gets the track attached so the clip lip-syncs it;
+    // anything else stays silent with dialogue on the TTS overlay. Narrator
+    // mode never voices dialogue at all.
+    // ------------------------------------------------------------------
+
+    private function fakeReplicateWan(): void
+    {
+        config(['ai.replicate.poll_interval_seconds' => 1]);
+
+        ProviderSettingsFactory::new()
+            ->forCapability(ProviderCapability::Video)
+            ->asDefault()
+            ->withProvider('replicate')
+            ->withCredentials('r8-test-credential-1234')
+            ->state(['config' => ['model' => 'wan-video/wan-2.5-i2v-fast']])
+            ->create();
+
+        Http::fake([
+            'https://api.replicate.com/v1/predictions' => Http::response(['id' => 'pred-1', 'status' => 'starting'], 201),
+            'https://api.replicate.com/v1/predictions/pred-1' => Http::response([
+                'id' => 'pred-1',
+                'status' => 'succeeded',
+                'output' => 'https://replicate.delivery/clip.mp4',
+            ]),
+            'https://replicate.delivery/clip.mp4' => Http::response("\x00\x00\x00\x18ftypmp42data", 200),
+        ]);
+    }
+
+    private function runSceneVideoJob(Video $video, Scene $scene): void
+    {
+        $jobRow = $video->generationJobs()->create([
+            'type' => GenerationJobType::SceneVideo,
+            'status' => 'queued',
+            'payload' => ['scene_id' => $scene->id, 'force' => false],
+        ]);
+
+        (new GenerateSceneVideoJob($video->project_id, $jobRow->id, $scene->id))
+            ->handle(app(ProviderManager::class), app(ProviderGateway::class), app(SceneVideoPersister::class));
+
+        $jobRow->refresh();
+        $this->assertSame('succeeded', $jobRow->status->value);
+    }
+
+    public function test_audio_input_models_attach_ready_dialogue_audio_for_lip_sync(): void
+    {
+        $this->fakeReplicateWan();
+        Sleep::fake();
+
+        $video = $this->makeAnimatedVideo();
+        $video->update(['presentation_mode_override' => PresentationMode::Dialogue]);
+        $scene = $video->scenes()->first();
+
+        $character = Character::factory()->for($this->project)->create(['name' => 'Robby']);
+        $line = $scene->dialogueLines()->create([
+            'character_id' => $character->id,
+            'text' => 'Watch me jump!',
+            'sort_order' => 1,
+            'status' => 'ready',
+        ]);
+
+        $audio = Asset::query()->create([
+            'project_id' => $this->project->id,
+            'video_id' => $video->id,
+            'type' => 'voice_audio',
+            'disk' => 'media-private',
+            'path' => 'fixtures/audio/line.wav',
+            'mime' => 'audio/wav',
+            'size_bytes' => 4096,
+            'meta' => ['duration_ms' => 2000],
+            'status' => 'ready',
+        ]);
+
+        Storage::disk('media-private')->put('fixtures/audio/line.wav', "\x52\x49\x46\x46____WAVEfmt ");
+        $line->update(['audio_asset_id' => $audio->id]);
+
+        $this->runSceneVideoJob($video, $scene);
+
+        Http::assertSent(function (Request $request): bool {
+            if ($request->url() !== 'https://api.replicate.com/v1/predictions') {
+                return false;
+            }
+
+            $input = $request->data()['input'];
+
+            $this->assertArrayHasKey('audio', $input, 'the ready dialogue track is attached');
+            $this->assertStringStartsWith('data:audio/wav;base64,', $input['audio']);
+            $this->assertArrayNotHasKey('negative_prompt', $input, 'no speech-suppression when dialogue is attached');
+
+            return true;
+        });
+
+        $scene->refresh();
+        $this->assertTrue((bool) $scene->videoAsset->meta['native_audio'], 'the clip carries the dialogue');
+    }
+
+    public function test_audio_input_models_stay_silent_without_ready_dialogue_audio(): void
+    {
+        $this->fakeReplicateWan();
+        Sleep::fake();
+
+        $video = $this->makeAnimatedVideo();
+        $video->update(['presentation_mode_override' => PresentationMode::Dialogue]);
+        $scene = $video->scenes()->first();
+
+        $character = Character::factory()->for($this->project)->create(['name' => 'Robby']);
+        $scene->dialogueLines()->create([
+            'character_id' => $character->id,
+            'text' => 'Watch me jump!',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $this->runSceneVideoJob($video, $scene);
+
+        Http::assertSent(function (Request $request): bool {
+            if ($request->url() !== 'https://api.replicate.com/v1/predictions') {
+                return false;
+            }
+
+            $input = $request->data()['input'];
+
+            $this->assertArrayNotHasKey('audio', $input, 'no audio track exists yet');
+            $this->assertSame('speech, talking, voiceover', $input['negative_prompt']);
+
+            return true;
+        });
+
+        $scene->refresh();
+        $this->assertFalse((bool) $scene->videoAsset->meta['native_audio'], 'dialogue stays on the TTS overlay');
+    }
+
+    public function test_narrator_mode_excludes_dialogue_from_native_speech(): void
+    {
+        $this->fakeVideoDefault();
+        config(['ai.runway.poll_interval_seconds' => 1]);
+        Sleep::fake();
+
+        // makeAnimatedVideo fixtures default to narrator mode: dialogue
+        // lines exist in the storyboard but the audio workflow must not
+        // voice them.
+        $video = $this->makeAnimatedVideo();
+        $scene = $video->scenes()->first();
+
+        $character = Character::factory()->for($this->project)->create(['name' => 'Robby']);
+        $scene->dialogueLines()->create([
+            'character_id' => $character->id,
+            'text' => 'Good morning, world!',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $jobRow = $video->generationJobs()->create([
+            'type' => GenerationJobType::SceneVideo,
+            'status' => 'queued',
+            'payload' => ['scene_id' => $scene->id, 'force' => false],
+        ]);
+
+        (new GenerateSceneVideoJob($this->project->id, $jobRow->id, $scene->id))
+            ->handle(app(ProviderManager::class), app(ProviderGateway::class), app(SceneVideoPersister::class));
+
+        $scene->refresh();
+        $this->assertFalse((bool) $scene->videoAsset->meta['native_audio'], 'narrator mode never voices dialogue');
     }
 }

@@ -20,6 +20,7 @@ use App\Models\Project;
 use App\Models\Scene;
 use App\Models\Video;
 use App\Services\SceneVideoPersister;
+use App\Services\VoiceGenerationDispatcher;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -259,7 +260,7 @@ final class GenerateSceneVideoJob implements ShouldQueue
 
     private function briefFor(Video $video, Scene $scene, VideoProviderCapabilities $capabilities): SceneAnimationBrief
     {
-        $nativeAudio = $capabilities->supportsNativeAudio;
+        $lipSync = $capabilities->lipSync;
 
         $dialogue = $scene->dialogueLines()
             ->orderBy('sort_order')
@@ -277,6 +278,40 @@ final class GenerateSceneVideoJob implements ShouldQueue
 
         $clipSeconds = (float) $scene->duration_seconds;
 
+        // Audio-input lip-sync models (e.g. wan-2.5): when EVERY spoken line
+        // of the scene has ready TTS audio and there is exactly one line, its
+        // audio track is attached so the clip lip-syncs it. Multi-line scenes
+        // stay on the TTS overlay (documented limitation — no silent
+        // duplication: an attached track excludes the line's TTS from the
+        // render mix via the clip's native_audio meta).
+        $audioDisk = null;
+        $audioPath = null;
+        $withNativeAudio = false;
+
+        if ($lipSync === 'audio_input'
+            && $dialogue !== []
+            && VoiceGenerationDispatcher::modeAllowsDialogue($video->effectivePresentationMode())) {
+            $lines = $scene->dialogueLines()
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+
+            $ready = $lines->filter(fn ($line) => $line->audio_asset_id !== null
+                && trim((string) $line->text) !== '');
+
+            if ($ready->count() === $lines->count() && $ready->count() === 1) {
+                $asset = $ready->first()->audioAsset;
+
+                if ($asset !== null) {
+                    $audioDisk = $asset->disk;
+                    $audioPath = $asset->path;
+                    $withNativeAudio = true;
+                }
+            }
+        }
+
+        $nativeSpeech = $lipSync === 'prompt_dialogue' && VoiceGenerationDispatcher::modeAllowsDialogue($video->effectivePresentationMode());
+
         return new SceneAnimationBrief(
             imageDisk: (string) config('ai.artifact_disk'),
             imagePath: (string) ($scene->imageAsset?->path ?? ''),
@@ -288,8 +323,10 @@ final class GenerateSceneVideoJob implements ShouldQueue
             camera: (string) ($scene->motion_camera ?? 'Stable camera with a slow, subtle cinematic push-in.'),
             environment: (string) ($scene->motion_environment ?? 'Subtle natural environmental movement.'),
             visualStyle: $video->effectiveVisualStyle(),
-            dialogueLines: $nativeAudio ? $dialogue : [],
-            withNativeAudio: $nativeAudio && $dialogue !== [],
+            dialogueLines: $nativeSpeech ? $dialogue : [],
+            withNativeAudio: $nativeSpeech ? ($dialogue !== [] && $capabilities->supportsNativeAudio) : $withNativeAudio,
+            audioDisk: $audioDisk,
+            audioPath: $audioPath,
         );
     }
 

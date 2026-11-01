@@ -47,6 +47,14 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    pipelineJobs: {
+        type: Array,
+        default: () => [],
+    },
+    pipelineJobActive: {
+        type: Boolean,
+        default: false,
+    },
     imageJobs: {
         type: Array,
         default: () => [],
@@ -86,6 +94,10 @@ const props = defineProps({
     videoModelRates: {
         type: Object,
         default: () => ({}),
+    },
+    fullVideoEstimate: {
+        type: Object,
+        default: null,
     },
 });
 
@@ -145,6 +157,9 @@ const planForm = useForm({});
 const imageForm = useForm({});
 const videoForm = useForm({});
 const assignVoicesForm = useForm({});
+const fullVideoForm = useForm({
+    mode: 'animated',
+});
 
 // ONE shared per-scene animation form: its processing flag drives the
 // button spinner, its error bag is rendered below (the previous anonymous
@@ -155,7 +170,52 @@ const animatingSceneId = ref(null);
 
 const latestPlanJob = computed(() => props.planJobs[0] ?? null);
 
-const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.videoJobActive || props.referenceJobActive || props.voiceJobActive);
+const anyJobActive = computed(() => props.planJobActive || props.imageJobActive || props.videoJobActive || props.referenceJobActive || props.voiceJobActive || props.pipelineJobActive);
+
+const latestPipelineJob = computed(() => props.pipelineJobs[0] ?? null);
+
+const fullVideoEstimateText = computed(() => {
+    if (! props.fullVideoEstimate) {
+        return '';
+    }
+
+    const parts = [];
+
+    if (props.fullVideoEstimate.video > 0) {
+        parts.push(`$${Number(props.fullVideoEstimate.video).toFixed(2)} video`);
+    }
+
+    if (props.fullVideoEstimate.voice > 0) {
+        parts.push(`$${Number(props.fullVideoEstimate.voice).toFixed(2)} voice`);
+    }
+
+    if (parts.length === 0) {
+        return 'no measurable provider cost for the selected configuration';
+    }
+
+    return `${parts.join(' + ')}${props.fullVideoEstimate.uncertain ? ' (voice/audio cost not precisely measurable for the configured provider)' : ''}`;
+});
+
+function generateFullVideo() {
+    const estimate = fullVideoEstimateText.value;
+    const modeLabel = fullVideoForm.mode === 'animated' ? 'AI animated video' : 'illustrated still video';
+
+    const message = `Start the complete automated production now?\n\n`
+        + `Mode: ${modeLabel}\n`
+        + `Model: ${props.video.video_model}\n`
+        + `Scenes: ${props.scenes.length || 'planned automatically from the story'}\n`
+        + `Estimated provider cost: ${estimate}\n\n`
+        + `One confirmation runs the whole pipeline: scene planning, references, scene images, ${fullVideoForm.mode === 'animated' ? 'AI animation, ' : ''}voices and final 9:16 assembly.`;
+
+    if (! confirm(message)) {
+        return;
+    }
+
+    fullVideoForm.post(route('storyboard.generate-full', [props.project.id, props.video.id]), {
+        preserveScroll: true,
+        onSuccess: () => startPolling(),
+    });
+}
 
 const assignVoicesBusy = computed(() => assignVoicesForm.processing || props.voiceJobActive);
 
@@ -390,7 +450,7 @@ function startPolling() {
 
     pollTimer.value = setInterval(() => {
         router.reload({
-            only: ['planJobs', 'planJobActive', 'imageJobs', 'imageJobActive', 'videoJobs', 'videoJobActive', 'referenceJobs', 'referenceJobActive', 'voiceJobs', 'voiceJobActive', 'scenes', 'characters', 'durationTotal'],
+            only: ['planJobs', 'planJobActive', 'pipelineJobs', 'pipelineJobActive', 'imageJobs', 'imageJobActive', 'videoJobs', 'videoJobActive', 'referenceJobs', 'referenceJobActive', 'voiceJobs', 'voiceJobActive', 'scenes', 'characters', 'durationTotal'],
         });
     }, 3000);
 }
@@ -484,6 +544,106 @@ if (anyJobActive.value) {
             </p>
             <p v-if="animatedCostTotal && video.generation_mode === 'animated'">
                 Estimated cost to animate all {{ scenes.length }} scene(s): {{ animatedCostTotal }} (model {{ video.video_model }})
+            </p>
+        </div>
+
+        <section class="mt-4 rounded-xl border-2 border-indigo-200 bg-indigo-50/60 p-4 sm:p-5">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <h2 class="text-base font-semibold text-indigo-900">
+                        Generate video — one click, fully automated
+                    </h2>
+                    <p class="mt-1 text-sm text-indigo-800">
+                        Runs the complete production from the ready story: scene planning, character references, scene images,
+                        <template v-if="fullVideoForm.mode === 'animated'">AI animation ({{ video.video_model }}),</template>
+                        voices and the final 9:16 assembly — no per-scene approvals.
+                    </p>
+                    <p class="mt-1 text-sm font-medium text-indigo-900">
+                        Estimated provider cost: {{ fullVideoEstimateText }}
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <label class="text-sm text-indigo-900">
+                        <span class="mr-2 font-medium">Mode</span>
+                        <select
+                            v-model="fullVideoForm.mode"
+                            class="rounded-md border border-indigo-300 bg-white px-2 py-1.5 text-sm text-gray-900"
+                            :disabled="pipelineJobActive"
+                        >
+                            <option value="animated">
+                                AI animated
+                            </option>
+                            <option value="still">
+                                Illustrated (still images)
+                            </option>
+                        </select>
+                    </label>
+                    <BaseButton
+                        :disabled="pipelineJobActive || !hasReadyStory || fullVideoForm.processing"
+                        :title="hasReadyStory ? '' : 'Generate or save a ready story first'"
+                        @click="generateFullVideo"
+                    >
+                        <span
+                            v-if="pipelineJobActive"
+                            class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                            aria-hidden="true"
+                        />
+                        {{ pipelineJobActive ? 'Pipeline running…' : (fullVideoForm.processing ? 'Starting…' : 'Generate Video') }}
+                    </BaseButton>
+                </div>
+            </div>
+            <p
+                v-if="fullVideoForm.errors.full"
+                class="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+                {{ fullVideoForm.errors.full }}
+            </p>
+        </section>
+
+        <div
+            v-for="job in pipelineJobs"
+            :key="`pipeline-${job.id}`"
+            class="mt-3 rounded-md border p-3 text-sm"
+            :class="{
+                'border-gray-200 bg-gray-50 text-gray-700': ['succeeded', 'cancelled'].includes(job.status),
+                'border-indigo-300 bg-white text-indigo-800': ['queued', 'running'].includes(job.status),
+                'border-red-200 bg-red-50 text-red-700': job.status === 'failed',
+            }"
+        >
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <span class="font-medium">
+                    Full-video pipeline #{{ job.id }} — {{ job.status.replaceAll('_', ' ') }}
+                    <template v-if="['queued', 'running'].includes(job.status) && job.payload?.stage">
+                        · stage: {{ job.payload.stage }}
+                    </template>
+                    <template v-if="job.result?.mode">
+                        · {{ job.result.mode }} mode · {{ job.result.scenes }} scene(s)
+                    </template>
+                </span>
+                <span class="text-xs text-gray-500">
+                    attempt {{ job.attempts }}/{{ job.max_attempts }}
+                </span>
+            </div>
+            <div
+                v-if="['queued', 'running'].includes(job.status)"
+                class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-indigo-100"
+            >
+                <div
+                    class="h-full rounded-full bg-indigo-600 transition-all"
+                    :style="{ width: `${Math.max(2, job.progress)}%` }"
+                />
+            </div>
+            <p
+                v-if="job.error_message"
+                class="mt-1"
+            >
+                {{ job.error_message }}
+            </p>
+            <p
+                v-else-if="job.status === 'succeeded'"
+                class="mt-1"
+            >
+                Video assembled — open the Render page to preview and download the final MP4.
             </p>
         </div>
 

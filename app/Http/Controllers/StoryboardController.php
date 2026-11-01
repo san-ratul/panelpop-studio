@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Exceptions\ProviderConfigurationException;
 use App\AI\Exceptions\ProviderException;
+use App\AI\ProviderManager;
 use App\AI\Support\VideoModelCatalog;
 use App\Enums\GenerationJobType;
 use App\Enums\ProjectStatus;
+use App\Enums\ProviderCapability;
 use App\Enums\StoryStatus;
 use App\Exceptions\DomainValidationException;
 use App\Http\Controllers\Support\GenerationJobPresenter;
@@ -20,6 +23,8 @@ use App\Services\ScenePlanValidator;
 use App\Services\SceneVideoDispatcher;
 use App\Services\VoiceGenerationDispatcher;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -51,6 +56,7 @@ class StoryboardController extends Controller
         // Per-scene status display needs every recent scene-video job, not
         // just the last five (a video can animate dozens of scenes at once).
         $videoJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneVideo, 200);
+        $pipelineJobs = GenerationJobPresenter::recent($video, GenerationJobType::FullVideoPipeline);
         $referenceJobs = GenerationJobPresenter::recentForProject($project, GenerationJobType::CharacterReference);
         $voiceJobs = GenerationJobPresenter::recent($video, GenerationJobType::VoiceGeneration);
 
@@ -71,6 +77,8 @@ class StoryboardController extends Controller
             'toleranceSeconds' => DurationValidator::TOLERANCE_SECONDS,
             'planJobs' => $planJobs,
             'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
+            'pipelineJobs' => $pipelineJobs,
+            'pipelineJobActive' => GenerationJobPresenter::hasActive($pipelineJobs),
             'imageJobs' => $imageJobs,
             'imageJobActive' => GenerationJobPresenter::hasActive($imageJobs),
             'videoJobs' => $videoJobs,
@@ -84,6 +92,7 @@ class StoryboardController extends Controller
             'silentMode' => VoiceGenerationDispatcher::modeRequiresNoAudio($presentationMode),
             'hasReadyStory' => ($video->story?->status ?? null) === StoryStatus::Ready,
             'videoModelRates' => VideoModelCatalog::usdPerSecondMap(),
+            'fullVideoEstimate' => $this->fullVideoCostEstimate($video, $video->effectiveGenerationMode()),
         ]);
     }
 
@@ -291,6 +300,135 @@ class StoryboardController extends Controller
 
         return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', sprintf('AI animation queued for scene %d (estimated %s).', $scene->number, $this->animationCostEstimate($video, 1, (float) $scene->duration_seconds)));
+    }
+
+    /**
+     * ONE-CLICK full video generation (the critical UX requirement): after
+     * the story is confirmed, this single action starts the complete
+     * automated production — scene planning, character references, scene
+     * images, AI scene videos (animated mode), voices and the final
+     * 9:16 assembly run without any further manual step.
+     *
+     * The verified cost estimate is computed BEFORE spend and shown in the
+     * confirmation; the selected model and the requested mode travel in the
+     * pipeline payload — nothing switches silently.
+     */
+    public function generateFullVideo(Request $request, Project $project, Video $video): RedirectResponse
+    {
+        $this->authorize('update', $video);
+
+        if (($video->story?->status ?? null) !== StoryStatus::Ready) {
+            throw ValidationException::withMessages([
+                'full' => 'Generate Video needs a ready story. Open the story editor, generate or save the story, then launch it there.',
+            ]);
+        }
+
+        $mode = $request->input('mode', 'animated');
+        $mode = in_array($mode, ['animated', 'still'], true) ? $mode : 'animated';
+
+        if ($mode === 'animated') {
+            // Pre-flight: fail BEFORE any spend when the video provider or
+            // its model cannot be resolved, with the actionable message.
+            try {
+                app(ProviderManager::class)->resolve(ProviderCapability::Video, $project);
+            } catch (ProviderConfigurationException $exception) {
+                throw ValidationException::withMessages([
+                    'full' => 'AI video generation is not configured: '.$exception->getMessage(),
+                ]);
+            } catch (ProviderException $exception) {
+                throw ValidationException::withMessages([
+                    'full' => 'AI video generation is not available: '.$exception->getMessage(),
+                ]);
+            }
+        }
+
+        $this->jobGuard->cancelStale($project, GenerationJobType::FullVideoPipeline, $video);
+
+        $active = $this->jobGuard->activeJob($project, GenerationJobType::FullVideoPipeline, $video);
+
+        if ($active !== null) {
+            throw ValidationException::withMessages([
+                'full' => sprintf(
+                    'A full-video pipeline is already %s for this video. Wait for it to finish.',
+                    $active->status->value,
+                ),
+            ]);
+        }
+
+        $estimate = $this->fullVideoCostEstimate($video, $mode);
+
+        $this->jobGuard->launch($project, GenerationJobType::FullVideoPipeline, [
+            'mode' => $mode,
+            'video_model' => $video->effectiveVideoModel(),
+            'estimated_video_usd' => $estimate['video'],
+            'estimated_voice_usd' => $estimate['voice'],
+        ], $video);
+
+        $summary = sprintf('$%.2f video', $estimate['video']);
+
+        if ($estimate['voice'] > 0) {
+            $summary .= sprintf(' + $%.2f voice', $estimate['voice']);
+        }
+
+        $modeLabel = $mode === 'animated' ? 'AI animated' : 'illustrated';
+
+        return redirect()->route('storyboard.show', [$project, $video])
+            ->with('success', sprintf(
+                'Full-video pipeline started (%s mode, estimated cost %s%s). Scenes, images, %s, voices and the final assembly now run automatically — track progress on the pipeline card below.',
+                $modeLabel,
+                $summary,
+                $estimate['uncertain'] ? ', estimates include provider rounding' : '',
+                $mode === 'animated' ? 'AI animation' : 'still scenes',
+            ));
+    }
+
+    /**
+     * Verified-rate cost estimate for the WHOLE video shown before launch.
+     * Video: per-clip seconds × verified model rate over all scenes (or the
+     * target duration when the plan has not been generated yet).
+     * Voice: only where measurable (Replicate TTS per-1k-token rate over the
+     * planned narration + dialogue text); OpenAI TTS has no documented
+     * tokens-per-second figure, so it is reported as not measurable.
+     *
+     * @return array{video: float, voice: float, uncertain: bool}
+     */
+    private function fullVideoCostEstimate(Video $video, string $mode): array
+    {
+        $uncertain = false;
+
+        $sceneSeconds = (float) $video->scenes()->sum('duration_seconds');
+        $billedSeconds = $sceneSeconds > 0 ? $sceneSeconds : (float) $video->target_duration_seconds;
+
+        $videoUsd = 0.0;
+
+        if ($mode === 'animated') {
+            $model = $video->effectiveVideoModel();
+
+            // Per-output-second pricing: round each scene up to the clip
+            // length the model will bill (approximation documented in the UI
+            // as an estimate; provider rounding adds the uncertainty note).
+            $videoUsd = VideoModelCatalog::estimateUsd($model, $billedSeconds, 1);
+
+            if ($videoUsd === null) {
+                $videoUsd = 0.0;
+                $uncertain = true;
+            }
+        }
+
+        $voiceUsd = 0.0;
+
+        if ((string) config('ai.env.tts.provider') === 'replicate') {
+            $chars = (int) $video->scenes()->get()
+                ->sum(fn (Scene $scene): int => mb_strlen((string) $scene->narration_text)
+                    + $scene->dialogueLines()->sum(DB::raw('LENGTH(text)')));
+
+            $perThousand = (float) config('ai.replicate.tts.price_per_1k_tokens', 0.06);
+            $voiceUsd = round(max(0.0, ($chars / 1000) * $perThousand), 4);
+        } else {
+            $uncertain = true;
+        }
+
+        return ['video' => $videoUsd, 'voice' => $voiceUsd, 'uncertain' => $uncertain];
     }
 
     /**

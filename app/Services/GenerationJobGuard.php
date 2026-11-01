@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Jobs\GenerateCharacterReferenceJob;
+use App\Jobs\GenerateFullVideoJob;
 use App\Jobs\GenerateSceneImageJob;
 use App\Jobs\GenerateSceneVideoJob;
 use App\Jobs\GenerateStoryJob;
@@ -233,6 +234,12 @@ final class GenerationJobGuard
                 (bool) ($payload['force'] ?? false),
             ),
             GenerationJobType::VideoRender => new RenderVideoJob($project->id, $job->id, $job->video_id),
+            GenerationJobType::FullVideoPipeline => new GenerateFullVideoJob(
+                $project->id,
+                $job->id,
+                (int) $job->video_id,
+                (string) ($payload['mode'] ?? 'animated'),
+            ),
             default => throw new LogicException(sprintf('No queue job is wired for generation job type "%s".', $type->value)),
         };
     }
