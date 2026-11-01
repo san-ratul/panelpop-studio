@@ -2,8 +2,11 @@
 
 namespace App\Models;
 
+use App\AI\ProviderManager;
+use App\AI\Support\VideoModelCatalog;
 use App\Enums\PresentationMode;
 use App\Enums\ProjectStatus;
+use App\Enums\ProviderCapability;
 use Database\Factories\VideoFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -154,26 +157,33 @@ class Video extends Model
     }
 
     /**
-     * AI video model in force (must exist in the verified Runway catalog,
-     * config ai.runway.models). Video setting → project setting → env/config
-     * default.
+     * AI video model in force (must exist in one of the verified provider
+     * catalogs — Replicate primary, Runway alternative; see
+     * config/ai.php). Resolution: video setting → project setting → env
+     * VIDEO_MODEL → the CONFIGURED video provider's catalog default (same
+     * precedence as provider resolution: project override → global default
+     * setting → env) → the documented primary default. A model from a
+     * different provider than the configured one is refused at generation
+     * time by that provider's adapter (actionable message).
      */
     public function effectiveVideoModel(): string
     {
         $candidates = [
             $this->settings['video_model'] ?? null,
             $this->project->settings['video_model'] ?? null,
-            config('ai.runway.default_model'),
+            config('ai.env.video.model'),
         ];
 
-        $models = config('ai.runway.models', []);
-
         foreach ($candidates as $candidate) {
-            if (is_string($candidate) && isset($models[$candidate])) {
+            if (is_string($candidate) && VideoModelCatalog::isValidModel($candidate)) {
                 return $candidate;
             }
         }
 
-        return 'veo3.1_fast';
+        $providerSlug = app(ProviderManager::class)
+            ->configuredProviderSlug(ProviderCapability::Video, $this->project);
+
+        return VideoModelCatalog::defaultModelFor($providerSlug)
+            ?? VideoModelCatalog::primaryDefaultModel();
     }
 }

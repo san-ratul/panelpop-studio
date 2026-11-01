@@ -42,8 +42,10 @@ return [
     // emotion-driven camera motion on static scene images. Master switch for
     // the whole installation; users can still disable it per project or per
     // video (video settings -> project settings -> this default).
+    // filter_var parses the env string honestly: a literal "false" must
+    // disable it (a raw PHP cast of the string "false" is truthy).
     'animation' => [
-        'enabled' => env('FFMPEG_ANIMATION_ENABLED', true),
+        'enabled' => filter_var(env('FFMPEG_ANIMATION_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
     ],
 
     // Pre-flight disk-space guard on the temp render area (R-4): refuse to

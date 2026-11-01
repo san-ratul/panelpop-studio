@@ -36,6 +36,78 @@ final class VideoModelCatalog
     }
 
     /**
+     * Whether the model id exists in ANY configured provider catalog (the
+     * merged view). Provider mismatch (a Runway model id selected while the
+     * Replicate provider is configured) is refused at runtime by the
+     * adapter with an actionable message listing that provider's models.
+     */
+    public static function isValidModel(?string $model): bool
+    {
+        return $model !== null && array_key_exists($model, self::catalog());
+    }
+
+    /**
+     * The provider's own catalog default (`ai.{provider}.default_model`).
+     * Returns null for a slug without a default (unknown/unconfigured
+     * provider) — never guessed.
+     */
+    public static function defaultModelFor(?string $providerSlug): ?string
+    {
+        if ($providerSlug === null || $providerSlug === '') {
+            return null;
+        }
+
+        $default = config("ai.{$providerSlug}.default_model");
+
+        return is_string($default) && trim($default) !== '' ? trim($default) : null;
+    }
+
+    /**
+     * The product's documented primary default (Replicate's catalog
+     * default) — used when no video provider slug can be determined.
+     */
+    public static function primaryDefaultModel(): string
+    {
+        return (string) config('ai.replicate.default_model');
+    }
+
+    /**
+     * Select options for the video settings UI, sorted with the configured
+     * primary default first: label, provider, and the verified USD/s rate
+     * (single source of truth — the frontend never hardcodes rates).
+     *
+     * @return list<array{value: string, label: string, provider: string, usd_per_second: ?float}>
+     */
+    public static function options(): array
+    {
+        $options = [];
+
+        foreach (self::catalog() as $model => $meta) {
+            $options[] = [
+                'value' => (string) $model,
+                'label' => ($meta['label'] ?? (string) $model),
+                'provider' => (string) ($meta['provider'] ?? 'unknown'),
+                'usd_per_second' => isset($meta['usd_per_second']) && is_numeric($meta['usd_per_second'])
+                    ? round((float) $meta['usd_per_second'], 4)
+                    : null,
+            ];
+        }
+
+        $primary = self::primaryDefaultModel();
+
+        usort($options, function (array $a, array $b) use ($primary): int {
+            $aPrimary = $a['value'] === $primary ? 0 : 1;
+            $bPrimary = $b['value'] === $primary ? 0 : 1;
+
+            return $aPrimary <=> $bPrimary
+                ?: strcmp($a['provider'], $b['provider'])
+                ?: strcmp($a['label'], $b['label']);
+        });
+
+        return $options;
+    }
+
+    /**
      * USD cost estimate for N clips of `model` at the given per-clip seconds.
      * Returns null when the model has no verified rate.
      */

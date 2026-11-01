@@ -52,6 +52,43 @@ final class ProviderManager
         throw new ProviderConfigurationException($this->unconfiguredMessage($capability));
     }
 
+    /**
+     * Which provider slug WOULD be used for this capability (project
+     * override → active global default setting → env), WITHOUT resolving
+     * adapters or credentials. Consumers that only need the slug (e.g.
+     * provider-aware model defaults) use this cheap lookup; it mirrors
+     * resolve()'s precedence exactly but never throws and never returns
+     * adapters — a configured-but-invalid slug can still come back here.
+     */
+    public function configuredProviderSlug(ProviderCapability $capability, ?Project $project = null): ?string
+    {
+        if ($project !== null) {
+            $overrideId = $project->provider_overrides[$capability->value] ?? null;
+
+            if ($overrideId !== null) {
+                $slug = ProviderSettings::query()->whereKey((int) $overrideId)->value('provider');
+
+                if (is_string($slug) && trim($slug) !== '') {
+                    return trim($slug);
+                }
+            }
+        }
+
+        $defaultSlug = ProviderSettings::query()
+            ->where('capability', $capability->value)
+            ->whereNull('owner_user_id')
+            ->where('is_active', true)
+            ->where('is_default', true)
+            ->orderBy('id')
+            ->value('provider');
+
+        if (is_string($defaultSlug) && trim($defaultSlug) !== '') {
+            return trim($defaultSlug);
+        }
+
+        return $this->normalizeSlug(config('ai.env.'.$capability->value.'.provider'));
+    }
+
     private function resolveOverride(int $settingsId, ProviderCapability $capability, Project $project): ResolvedProvider
     {
         $settings = ProviderSettings::find($settingsId);

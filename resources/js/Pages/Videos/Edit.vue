@@ -33,6 +33,10 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    videoModelOptions: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const page = usePage();
@@ -52,13 +56,9 @@ const form = useForm({
     video_model: props.video.video_model_override ?? '',
 });
 
-const videoModels = [
-    { value: 'veo3.1_fast', label: 'Veo 3.1 Fast — native audio + speech', rate: 0.15 },
-    { value: 'kling3.0_standard', label: 'Kling 3.0 Standard — optional audio', rate: 0.13 },
-    { value: 'wan3', label: 'WAN 3.0 (720p) — native audio', rate: 0.10 },
-    { value: 'gen4_turbo', label: 'Gen-4 Turbo — silent (lowest cost)', rate: 0.05 },
-    { value: 'gen4.5', label: 'Gen-4.5 — silent, high quality', rate: 0.12 },
-];
+// Server-verified catalog (Replicate primary + Runway alternative) with
+// per-model USD/s rates — the frontend never hardcodes models or rates.
+const videoModels = props.videoModelOptions ?? [];
 
 function submit() {
     const baseSettings = { ...(props.video.settings ?? {}) };
@@ -273,14 +273,15 @@ function resetOverrides() {
                         :key="model.value"
                         :value="model.value"
                     >
-                        {{ model.label }} — ${{ model.rate.toFixed(2) }}/s
+                        {{ model.label }} ({{ model.provider }}) — {{ model.usd_per_second ? `$${model.usd_per_second.toFixed(3)}/s` : 'rate unverified' }}
                         {{ model.value === video.video_model_override ? '— current override' : '' }}
                     </option>
                 </SelectInput>
 
                 <p class="text-sm text-gray-500">
-                    AI animated video generates a short clip per scene (about $0.60–$1.20 per scene, $3–$10 per
-                    finished video depending on the model and scene lengths). Still-image mode stays the low-cost
+                    AI animated video generates a short clip per scene (billed per second of generated video — the
+                    per-model rate is shown on each option; roughly $3–$10 per finished video depending on the model
+                    and scene lengths). Still-image mode stays the low-cost
                     default.
                 </p>
             </fieldset>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Support\VideoModelCatalog;
 use App\Http\Requests\VideoRequest;
 use App\Models\Project;
 use App\Models\Video;
@@ -90,6 +91,7 @@ class VideoController extends Controller
             'presentationModes' => ProjectController::presentationModes(),
             'visualStyles' => ProjectController::styleOptions($video->effectiveVisualStyle()),
             'languages' => ProjectController::languageOptions($video->effectiveLanguage()),
+            'videoModelOptions' => VideoModelCatalog::options(),
         ]);
     }
 
