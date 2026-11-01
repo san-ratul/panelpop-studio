@@ -63,14 +63,38 @@ final class FfmpegRenderer
             }
 
             $segmentPath = $workDir.sprintf('/segment-%03d.mp4', $scene->number);
-            $args = $this->builder->segmentCommand(
-                $scene,
-                $segmentLength,
-                $image,
-                $bubblePaths[$scene->number] ?? [],
-                $segmentPath,
-                $plan->animationEnabled,
-            );
+
+            if ($scene->videoClip !== null) {
+                // AI-animated scene: the clip provides the motion; audio (if
+                // any) enters the mix through the dialogue wiring.
+                $clip = LocalStoragePaths::absolute($scene->videoClip->disk, $scene->videoClip->path);
+
+                if ($clip === null) {
+                    throw new RenderPreFlightException([
+                        sprintf(
+                            'Scene %d AI clip is not accessible on the local render disk. Regenerate the scene video.',
+                            $scene->number,
+                        ),
+                    ]);
+                }
+
+                $args = $this->builder->segmentFromClip(
+                    $scene,
+                    $segmentLength,
+                    $clip,
+                    $bubblePaths[$scene->number] ?? [],
+                    $segmentPath,
+                );
+            } else {
+                $args = $this->builder->segmentCommand(
+                    $scene,
+                    $segmentLength,
+                    $image,
+                    $bubblePaths[$scene->number] ?? [],
+                    $segmentPath,
+                    $plan->animationEnabled,
+                );
+            }
 
             $result = $this->runner->run($args, $this->settings->timeoutSeconds);
 

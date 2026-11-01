@@ -92,6 +92,8 @@ Route::middleware('auth')->scopeBindings()->group(function () {
     Route::post('/projects/{project}/videos/{video}/storyboard/complete', [StoryboardController::class, 'complete'])->name('storyboard.complete');
     Route::post('/projects/{project}/videos/{video}/storyboard/generate-plan', [StoryboardController::class, 'generatePlan'])->name('storyboard.generate-plan');
     Route::post('/projects/{project}/videos/{video}/storyboard/generate-images', [StoryboardController::class, 'generateImages'])->name('storyboard.generate-images');
+    Route::post('/projects/{project}/videos/{video}/storyboard/generate-videos', [StoryboardController::class, 'generateVideos'])->name('storyboard.generate-videos');
+    Route::post('/projects/{project}/videos/{video}/scenes/{scene}/generate-video', [StoryboardController::class, 'generateSceneVideo'])->name('scenes.generate-video');
     Route::post('/projects/{project}/videos/{video}/storyboard/assign-voices', [StoryboardController::class, 'assignVoices'])->name('storyboard.assign-voices');
 
     Route::get('/projects/{project}/videos/{video}/audio', [ProjectAudioController::class, 'show'])->name('audio.show');

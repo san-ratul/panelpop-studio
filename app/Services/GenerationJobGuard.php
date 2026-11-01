@@ -6,6 +6,7 @@ use App\Enums\GenerationJobStatus;
 use App\Enums\GenerationJobType;
 use App\Jobs\GenerateCharacterReferenceJob;
 use App\Jobs\GenerateSceneImageJob;
+use App\Jobs\GenerateSceneVideoJob;
 use App\Jobs\GenerateStoryJob;
 use App\Jobs\GenerateVoiceJob;
 use App\Jobs\PlanScenesJob;
@@ -212,6 +213,12 @@ final class GenerationJobGuard
                 (int) ($payload['character_id'] ?? 0),
             ),
             GenerationJobType::SceneImage => new GenerateSceneImageJob(
+                $project->id,
+                $job->id,
+                (int) ($payload['scene_id'] ?? 0),
+                (bool) ($payload['force'] ?? false),
+            ),
+            GenerationJobType::SceneVideo => new GenerateSceneVideoJob(
                 $project->id,
                 $job->id,
                 (int) ($payload['scene_id'] ?? 0),

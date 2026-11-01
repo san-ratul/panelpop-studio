@@ -119,6 +119,100 @@ final class FfmpegCommandBuilder
         return $args;
     }
 
+    /**
+     * AI-clip segment (VIDEO_GENERATION_AI.md): the animated clip IS the
+     * scene's motion — no zoompan. The clip is scaled/cropped to the 9:16
+     * canvas, normalized to the pipeline fps, trimmed or last-frame-held
+     * (tpad clone) to the exact scene duration, optionally overlaid with
+     * speech bubbles, and encoded WITHOUT audio (the clip's audio, when
+     * used, enters the unified mix via RenderPlanBuilder's dialogue wiring —
+     * audio is never mixed from two places).
+     *
+     * @param  list<string>  $bubblePngPaths
+     * @return list<string>
+     */
+    public function segmentFromClip(
+        RenderPlanScene $scene,
+        float $segmentLength,
+        string $clipAbsPath,
+        array $bubblePngPaths,
+        string $outputPath,
+    ): array {
+        if ($segmentLength <= 0) {
+            throw new InvalidArgumentException('Segment length must be positive.');
+        }
+
+        $frames = self::framesFor($segmentLength);
+
+        // Pad generously (clone the last frame) then trim exactly: covers
+        // clips shorter than the scene and trims clips longer than it.
+        $base = sprintf(
+            '[0:v]scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d,'
+            .'setsar=1,fps=%d,tpad=stop_mode=clone:stop_duration=%.2f,trim=duration=%.2f,format=%s',
+            RenderSettings::WIDTH,
+            RenderSettings::HEIGHT,
+            RenderSettings::WIDTH,
+            RenderSettings::HEIGHT,
+            RenderSettings::FPS,
+            $segmentLength + 5.0,
+            $segmentLength,
+            RenderSettings::PIXEL_FORMAT,
+        );
+
+        $bubbleList = array_values($bubblePngPaths);
+
+        if ($bubbleList === []) {
+            $filter = $base.'[v]';
+        } else {
+            $filter = $base.'[base]';
+            $previous = '[base]';
+
+            foreach ($bubbleList as $index => $bubblePath) {
+                $isLast = $index === count($bubbleList) - 1;
+                $output = $isLast ? '[v]' : sprintf('[ov%d]', $index);
+
+                $filter .= sprintf(
+                    ';[%d:v]format=rgba[bub%d];%s[bub%d]overlay=0:0:format=auto%s',
+                    $index + 1,
+                    $index,
+                    $previous,
+                    $index,
+                    $output,
+                );
+
+                $previous = $output;
+            }
+        }
+
+        $args = [$this->settings->ffmpegPath ?? 'ffmpeg', '-y', '-i', $clipAbsPath];
+
+        foreach ($bubblePngPaths as $bubblePath) {
+            $args[] = '-i';
+            $args[] = $bubblePath;
+        }
+
+        $args[] = '-filter_complex';
+        $args[] = $filter;
+        $args[] = '-map';
+        $args[] = '[v]';
+        $args[] = '-an';
+        $args[] = '-c:v';
+        $args[] = 'libx264';
+        $args[] = '-preset';
+        $args[] = $this->settings->x264Preset;
+        $args[] = '-crf';
+        $args[] = (string) $this->settings->crf;
+        $args[] = '-pix_fmt';
+        $args[] = RenderSettings::PIXEL_FORMAT;
+        $args[] = '-r';
+        $args[] = (string) RenderSettings::FPS;
+        $args[] = '-frames:v';
+        $args[] = (string) $frames;
+        $args[] = $outputPath;
+
+        return $args;
+    }
+
     private static function kenBurnsCanvasHeight(): int
     {
         // 2160 x 3840 = exactly 2x the 1080x1920 output; zoompan pans inside

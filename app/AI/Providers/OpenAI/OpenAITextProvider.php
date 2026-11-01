@@ -21,6 +21,7 @@ use App\AI\Results\PlannedDialogueLine;
 use App\AI\Results\PlannedScene;
 use App\AI\Results\PlannedVoiceAssignment;
 use App\AI\Results\ProviderUsage;
+use App\AI\Results\SceneMotionPlan;
 use App\AI\Results\ScenePlan;
 use App\AI\Results\StoryDraft;
 use App\AI\Results\VideoMetadata;
@@ -123,6 +124,11 @@ final class OpenAITextProvider implements ConfigurableProvider, TextProvider
                     $scene['dialogue'],
                 ),
                 narrationVoiceInstructions: $scene['narration_voice_instructions'] ?? null,
+                motion: isset($scene['motion']) && is_array($scene['motion']) ? new SceneMotionPlan(
+                    action: $scene['motion']['action'] ?? null,
+                    camera: $scene['motion']['camera'] ?? null,
+                    environment: $scene['motion']['environment'] ?? null,
+                ) : null,
             ),
             $plan['scenes'],
         );

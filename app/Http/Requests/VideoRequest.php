@@ -31,6 +31,25 @@ class VideoRequest extends FormRequest
             'settings.animation' => ['sometimes', 'array'],
             'settings.animation.enabled' => ['sometimes', 'boolean'],
             'settings.narration_voice_config' => ['sometimes', 'nullable', 'array'],
+            // AI animation (VIDEO_GENERATION_AI.md): still = image pipeline;
+            // animated = AI image-to-video clips (significantly more
+            // expensive — opt-in only). The model must exist in the verified
+            // Runway catalog.
+            'settings.generation_mode' => ['sometimes', 'nullable', 'string', 'in:still,animated'],
+            'settings.video_model' => [
+                'sometimes',
+                'nullable',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return; // inherit the project default
+                    }
+
+                    if (! array_key_exists((string) $value, (array) config('ai.runway.models', []))) {
+                        $fail('The selected AI video model is not in the verified catalog.');
+                    }
+                },
+            ],
         ];
     }
 

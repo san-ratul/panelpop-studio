@@ -169,6 +169,10 @@ class VideoController extends Controller
             'effective_language' => $video->effectiveLanguage(),
             'effective_presentation_mode' => $video->effectivePresentationMode()->value,
             'narration_voice_config' => $video->effectiveNarrationVoiceConfig(),
+            'generation_mode' => $video->effectiveGenerationMode(),
+            'generation_mode_override' => $video->settings['generation_mode'] ?? null,
+            'video_model' => $video->effectiveVideoModel(),
+            'video_model_override' => $video->settings['video_model'] ?? null,
         ];
     }
 }

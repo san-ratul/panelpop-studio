@@ -131,6 +131,7 @@ class SceneController extends Controller
     public static function present(Scene $scene): array
     {
         $narrationMeta = $scene->narrationAudioAsset?->meta ?? [];
+        $clipMeta = $scene->videoAsset?->meta ?? [];
 
         return [
             'id' => $scene->id,
@@ -140,6 +141,9 @@ class SceneController extends Controller
             'image_prompt' => $scene->image_prompt,
             'narration_text' => $scene->narration_text,
             'narration_voice_instructions' => $scene->narration_voice_instructions,
+            'motion_action' => $scene->motion_action,
+            'motion_camera' => $scene->motion_camera,
+            'motion_environment' => $scene->motion_environment,
             'speech_bubble_settings' => $scene->speech_bubble_settings,
             'status' => $scene->status->value,
             'error_message' => $scene->error_message,
@@ -147,6 +151,12 @@ class SceneController extends Controller
             'image_url' => $scene->image_asset_id !== null
                 ? route('assets.show', ['project' => $scene->video->project_id, 'asset' => $scene->image_asset_id])
                 : null,
+            'has_clip' => $scene->video_asset_id !== null,
+            'clip_url' => $scene->video_asset_id !== null
+                ? route('assets.show', ['project' => $scene->video->project_id, 'asset' => $scene->video_asset_id])
+                : null,
+            'clip_model' => is_array($clipMeta) ? ($clipMeta['model'] ?? null) : null,
+            'video_error_message' => $scene->video_error_message,
             'has_narration_audio' => $scene->narration_audio_asset_id !== null,
             'narration_audio_url' => $scene->narration_audio_asset_id !== null
                 ? route('assets.show', ['project' => $scene->video->project_id, 'asset' => $scene->narration_audio_asset_id])

@@ -111,6 +111,7 @@ final class StoryPromptBuilder
             ."- Give every dialogue line an `emotion` (one word, e.g. happy, sad, angry, scared, excited, whisper, calm, neutral) matching the line's content.\n"
             ."- Give every dialogue line a short `voice_instructions` delivery note (tone, energy, pace) consistent with that emotion: happy lines sound cheerful and energetic, sad lines soft and emotional, angry lines firm and intense, whispers quiet and intimate, excited lines enthusiastic.\n"
             ."- When a scene has narration, give `narration_voice_instructions` describing the narrator's delivery for that scene.\n"
+            ."- For every scene write a `motion` plan describing what the characters physically DO (actions, facial expressions, body movement, interactions between characters), how the camera moves, and how the environment moves. Make the motion specific to THIS scene's story beat — describe reactions to the dialogue and visible character actions (a shrug, a shoulder shake, a blink awake, a grin), never the same generic movement twice. Keep the camera mostly stable with subtle cinematic movement.\n"
             ."- Language: {$language}.\n"
             .$characterList;
 

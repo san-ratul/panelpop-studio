@@ -15,5 +15,6 @@ final class PlannedScene
         public readonly ?string $narrationText = null,
         public readonly array $dialogue = [],
         public readonly ?string $narrationVoiceInstructions = null,
+        public readonly ?SceneMotionPlan $motion = null,
     ) {}
 }

@@ -161,6 +161,26 @@ final class OpenAISchemas
                                 'type' => ['string', 'null'],
                                 'description' => 'Delivery instruction for the narrator on this scene (tone, pace, emotion), at most 4096 characters. Null when the scene has no narration.',
                             ],
+                            'motion' => [
+                                'type' => ['object', 'null'],
+                                'description' => 'Scene-specific motion direction for the animated video: what the characters physically DO, how the camera moves, and how the environment moves. Must be specific to this scene\'s story beat (never the same generic movement twice).',
+                                'properties' => [
+                                    'action' => [
+                                        'type' => ['string', 'null'],
+                                        'description' => 'Character actions, expressions and body movement in this scene, including interactions between characters (e.g. who turns, who wakes, who gestures).',
+                                    ],
+                                    'camera' => [
+                                        'type' => ['string', 'null'],
+                                        'description' => 'Camera movement for the scene (e.g. stable with subtle push-in, slow pan left, gentle handheld).',
+                                    ],
+                                    'environment' => [
+                                        'type' => ['string', 'null'],
+                                        'description' => 'Environmental movement (e.g. clouds drifting, curtains swaying, rain falling, crowd in background).',
+                                    ],
+                                ],
+                                'required' => ['action', 'camera', 'environment'],
+                                'additionalProperties' => false,
+                            ],
                             'dialogue' => [
                                 'type' => 'array',
                                 'description' => 'Spoken lines in order; empty when the mode has no dialogue.',
@@ -189,7 +209,7 @@ final class OpenAISchemas
                                 ],
                             ],
                         ],
-                        'required' => ['number', 'duration_seconds', 'background_description', 'image_prompt', 'narration_text', 'narration_voice_instructions', 'dialogue'],
+                        'required' => ['number', 'duration_seconds', 'background_description', 'image_prompt', 'narration_text', 'narration_voice_instructions', 'motion', 'dialogue'],
                         'additionalProperties' => false,
                     ],
                 ],

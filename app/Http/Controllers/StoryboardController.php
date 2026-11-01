@@ -15,6 +15,7 @@ use App\Services\DurationValidator;
 use App\Services\GenerationJobGuard;
 use App\Services\SceneImageDispatcher;
 use App\Services\ScenePlanValidator;
+use App\Services\SceneVideoDispatcher;
 use App\Services\VoiceGenerationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +31,7 @@ class StoryboardController extends Controller
         private readonly ScenePlanValidator $scenePlanValidator,
         private readonly GenerationJobGuard $jobGuard,
         private readonly SceneImageDispatcher $sceneImageDispatcher,
+        private readonly SceneVideoDispatcher $sceneVideoDispatcher,
         private readonly DialogueVoiceAssignmentService $voiceAssignment,
     ) {}
 
@@ -44,8 +46,9 @@ class StoryboardController extends Controller
 
         $planJobs = GenerationJobPresenter::recent($video, GenerationJobType::ScenePlanning);
         $imageJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneImage);
-        $voiceJobs = GenerationJobPresenter::recent($video, GenerationJobType::VoiceGeneration);
+        $videoJobs = GenerationJobPresenter::recent($video, GenerationJobType::SceneVideo);
         $referenceJobs = GenerationJobPresenter::recentForProject($project, GenerationJobType::CharacterReference);
+        $voiceJobs = GenerationJobPresenter::recent($video, GenerationJobType::VoiceGeneration);
 
         $presentationMode = $video->effectivePresentationMode();
 
@@ -66,6 +69,8 @@ class StoryboardController extends Controller
             'planJobActive' => GenerationJobPresenter::hasActive($planJobs),
             'imageJobs' => $imageJobs,
             'imageJobActive' => GenerationJobPresenter::hasActive($imageJobs),
+            'videoJobs' => $videoJobs,
+            'videoJobActive' => GenerationJobPresenter::hasActive($videoJobs),
             'referenceJobs' => $referenceJobs,
             'referenceJobActive' => GenerationJobPresenter::hasActive($referenceJobs),
             'voiceJobs' => $voiceJobs,
@@ -206,6 +211,99 @@ class StoryboardController extends Controller
 
         return redirect()->route('storyboard.show', [$project, $video])
             ->with('success', ucfirst(implode(', ', $parts)).'. Review the speakers and generate the voice audio.');
+    }
+
+    /**
+     * AI animation (VIDEO_GENERATION_AI.md): queues image-to-video jobs for
+     * this video's scenes. Gated on the video's generation mode; requires
+     * each scene's still image (the clip is conditioned on it for identity).
+     * The estimated cost is computed from the verified per-second model rate
+     * and shown in the flash message BEFORE spend happens.
+     */
+    public function generateVideos(Project $project, Video $video): RedirectResponse
+    {
+        $this->authorize('update', $video);
+
+        if ($video->effectiveGenerationMode() !== 'animated') {
+            throw ValidationException::withMessages([
+                'videos' => 'This video is in still-image mode. Switch the generation mode to "AI animated video" in the video settings first — AI animation costs significantly more per video.',
+            ]);
+        }
+
+        if ($video->scenes()->doesntExist()) {
+            throw ValidationException::withMessages([
+                'videos' => 'No scenes to animate. Generate or add a scene plan first.',
+            ]);
+        }
+
+        $summary = $this->sceneVideoDispatcher->dispatchForVideo($video);
+
+        if ($summary['queued'] === 0) {
+            $message = $summary['skipped_mode']
+                ? 'This video is in still-image mode.'
+                : ($summary['missing_images'] > 0
+                    ? sprintf('%d scene(s) still need images before they can be animated.', $summary['missing_images'])
+                    : 'All scenes already have AI animation.');
+
+            return redirect()->route('storyboard.show', [$project, $video])
+                ->with('success', $message);
+        }
+
+        $estimate = $this->animationCostEstimate($video, $summary['queued']);
+
+        return redirect()->route('storyboard.show', [$project, $video])
+            ->with('success', sprintf(
+                'Queued %d AI scene video(s). Estimated provider cost: about %s (model %s). Failed scenes can be retried individually.',
+                $summary['queued'],
+                $estimate,
+                $video->effectiveVideoModel(),
+            ));
+    }
+
+    /**
+     * Per-scene AI animation (used as the failed-scene retry control).
+     */
+    public function generateSceneVideo(Project $project, Video $video, Scene $scene): RedirectResponse
+    {
+        $this->authorize('update', $scene);
+
+        if ($video->effectiveGenerationMode() !== 'animated') {
+            throw ValidationException::withMessages([
+                'videos' => 'This video is in still-image mode. Switch the generation mode in the video settings first.',
+            ]);
+        }
+
+        $force = $scene->video_asset_id !== null;
+
+        $queued = $this->sceneVideoDispatcher->dispatchScene($video, $scene, $force);
+
+        if (! $queued) {
+            return redirect()->route('storyboard.show', [$project, $video])
+                ->with('success', $scene->image_asset_id === null
+                    ? 'Generate the scene image first — the animation is conditioned on it.'
+                    : 'This scene already has an AI animation (or one is already queued).');
+        }
+
+        return redirect()->route('storyboard.show', [$project, $video])
+            ->with('success', sprintf('AI animation queued for scene %d (estimated %s).', $scene->number, $this->animationCostEstimate($video, 1, (float) $scene->duration_seconds)));
+    }
+
+    /**
+     * Verified-rate cost estimate for N clips of this video's model.
+     */
+    private function animationCostEstimate(Video $video, int $clipCount, ?float $perClipSeconds = null): string
+    {
+        $model = $video->effectiveVideoModel();
+        $meta = config('ai.runway.models.'.$model, []);
+        $rate = is_array($meta) && is_numeric($meta['rates_credits_per_second'] ?? null)
+            ? (float) $meta['rates_credits_per_second']
+            : 0.0;
+
+        $avgSeconds = $perClipSeconds ?? max(1.0, (float) $video->scenes()->avg('duration_seconds'));
+
+        $usd = ($rate / 100.0) * $avgSeconds * max(1, $clipCount);
+
+        return sprintf('$%.2f', $usd);
     }
 
     /**

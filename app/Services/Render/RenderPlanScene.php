@@ -23,6 +23,7 @@ final class RenderPlanScene
         public readonly ?RenderAudio $narrationAudio,
         public readonly array $dialogueLines,
         public readonly ?string $dominantEmotion = null,
+        public readonly ?RenderClip $videoClip = null,
     ) {}
 
     /**

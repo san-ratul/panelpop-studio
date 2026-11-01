@@ -68,11 +68,12 @@ final class RenderPlanBuilder
         $presentationMode = $video->effectivePresentationMode();
         $narrationExpected = self::modeAllowsNarration($presentationMode);
         $dialogueExpected = self::modeAllowsDialogue($presentationMode);
+        $animatedMode = $video->effectiveGenerationMode() === 'animated';
 
         $planScenes = [];
 
         foreach ($scenes as $scene) {
-            $planScenes[] = $this->buildScene($scene, $narrationExpected, $dialogueExpected, $errors, $warnings);
+            $planScenes[] = $this->buildScene($scene, $narrationExpected, $dialogueExpected, $animatedMode, $errors, $warnings);
         }
 
         // Licence gate (hard rule: re-tested at the render boundary). Music
@@ -169,7 +170,7 @@ final class RenderPlanBuilder
     // Per-scene validation
     // ------------------------------------------------------------------
 
-    private function buildScene(Scene $scene, bool $narrationExpected, bool $dialogueExpected, array &$errors, array &$warnings): RenderPlanScene
+    private function buildScene(Scene $scene, bool $narrationExpected, bool $dialogueExpected, bool $animatedMode, array &$errors, array &$warnings): RenderPlanScene
     {
         $image = $scene->imageAsset;
 
@@ -197,8 +198,46 @@ final class RenderPlanBuilder
             $errors[] = sprintf('Scene %d: %s', $scene->number, $imageError);
         }
 
+        $clip = $this->clipFor($scene, $animatedMode, $errors, $warnings);
+
+        $clipCarriesDialogue = $clip !== null && $clip->nativeAudio
+            && $dialogueExpected
+            && $scene->dialogueLines()->whereNotNull('character_id')->exists();
+
         $narrationAudio = $this->narrationAudioFor($scene, $narrationExpected, $errors, $warnings);
-        $lines = $dialogueExpected ? $this->dialogueLinesFor($scene, $errors, $warnings) : [];
+
+        // When the clip renders the dialogue with native speech, the scene's
+        // TTS dialogue lines are excluded from the mix (and from the
+        // pre-flight requirements) — dialogue is never duplicated.
+        $lines = $dialogueExpected && ! $clipCarriesDialogue
+            ? $this->dialogueLinesFor($scene, $errors, $warnings)
+            : [];
+
+        if ($clipCarriesDialogue) {
+            $clipText = $scene->dialogueLines()
+                ->orderBy('sort_order')->orderBy('id')
+                ->pluck('text')
+                ->filter(fn ($text): bool => is_string($text) && trim($text) !== '')
+                ->implode("\n");
+
+            $lines = [
+                new RenderDialogueLine(
+                    lineId: 0,
+                    text: $clipText,
+                    audio: new RenderAudio(
+                        disk: $clip->disk,
+                        path: $clip->path,
+                        durationMs: $clip->durationMs,
+                    ),
+                    emotion: $scene->dialogueLines()->orderBy('sort_order')->value('emotion'),
+                ),
+            ];
+
+            $warnings[] = sprintf(
+                'Scene %d: the dialogue is spoken by the AI clip itself (native audio); its per-line captions are timed approximately across the clip.',
+                $scene->number,
+            );
+        }
 
         return new RenderPlanScene(
             number: $scene->number,
@@ -209,6 +248,74 @@ final class RenderPlanBuilder
             narrationText: (string) ($scene->narration_text ?? ''),
             narrationAudio: $narrationAudio,
             dialogueLines: $lines,
+            videoClip: $clip,
+        );
+    }
+
+    /**
+     * Validates and returns the scene's AI clip in animated mode; null in
+     * still mode or when the scene has no clip (the still pipeline renders
+     * that scene — graceful per-scene fallback, documented in
+     * VIDEO_GENERATION_AI.md).
+     */
+    private function clipFor(Scene $scene, bool $animatedMode, array &$errors, array &$warnings): ?RenderClip
+    {
+        if ($animatedMode !== true) {
+            return null;
+        }
+
+        $asset = $scene->videoAsset;
+
+        if ($asset === null) {
+            $warnings[] = sprintf(
+                'Scene %d has no AI animation yet — it renders with the still-image pipeline (Ken Burns motion). Generate the scene video for full animation.',
+                $scene->number,
+            );
+
+            return null;
+        }
+
+        if ($asset->status !== AssetStatus::Ready) {
+            $errors[] = sprintf('Scene %d: its AI clip is not ready. Regenerate the scene video before rendering.', $scene->number);
+
+            return null;
+        }
+
+        if ($asset->disk !== (string) config('ai.artifact_disk')) {
+            $errors[] = sprintf('Scene %d: its AI clip is stored on an unsupported disk for rendering.', $scene->number);
+
+            return null;
+        }
+
+        if (! $this->isSafePath((string) $asset->path)) {
+            $errors[] = sprintf('Scene %d: its AI clip storage path is invalid.', $scene->number);
+
+            return null;
+        }
+
+        $disk = Storage::disk($asset->disk);
+
+        if (! $disk->exists($asset->path)) {
+            $errors[] = sprintf('Scene %d: its AI clip file is missing from storage. Regenerate the scene video before rendering.', $scene->number);
+
+            return null;
+        }
+
+        $bytes = (string) $disk->get($asset->path);
+
+        if ($bytes === '' || ! str_contains(substr($bytes, 4, 4), 'ftyp')) {
+            $errors[] = sprintf('Scene %d: its AI clip file is not a readable video stream. Regenerate the scene video before rendering.', $scene->number);
+
+            return null;
+        }
+
+        $meta = is_array($asset->meta) ? $asset->meta : [];
+
+        return new RenderClip(
+            disk: $asset->disk,
+            path: $asset->path,
+            durationMs: isset($meta['duration_ms']) && is_numeric($meta['duration_ms']) ? (int) $meta['duration_ms'] : null,
+            nativeAudio: ($meta['native_audio'] ?? false) === true,
         );
     }
 

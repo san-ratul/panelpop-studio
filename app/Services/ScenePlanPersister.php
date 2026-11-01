@@ -81,6 +81,9 @@ final class ScenePlanPersister
                     'image_prompt' => $scene['image_prompt'],
                     'narration_text' => $scene['narration_text'],
                     'narration_voice_instructions' => $scene['narration_voice_instructions'] ?? null,
+                    'motion_action' => $scene['motion']['action'] ?? null,
+                    'motion_camera' => $scene['motion']['camera'] ?? null,
+                    'motion_environment' => $scene['motion']['environment'] ?? null,
                     'status' => SceneStatus::Pending,
                 ]);
 

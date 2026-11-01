@@ -19,12 +19,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'image_prompt',
     'narration_text',
     'narration_voice_instructions',
+    'motion_action',
+    'motion_camera',
+    'motion_environment',
     'speech_bubble_settings',
     'status',
     'error_message',
+    'video_error_message',
     'rendered_at',
     'image_asset_id',
     'narration_audio_asset_id',
+    'video_asset_id',
 ])]
 class Scene extends Model
 {
@@ -59,6 +64,11 @@ class Scene extends Model
     public function narrationAudioAsset(): BelongsTo
     {
         return $this->belongsTo(Asset::class, 'narration_audio_asset_id');
+    }
+
+    public function videoAsset(): BelongsTo
+    {
+        return $this->belongsTo(Asset::class, 'video_asset_id');
     }
 
     public function dialogueLines(): HasMany

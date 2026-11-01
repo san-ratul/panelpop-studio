@@ -16,6 +16,7 @@ enum ProviderOperation: string
     case VideoMetadata = 'video_metadata';
     case CharacterReference = 'character_reference';
     case SceneImage = 'scene_image';
+    case SceneVideo = 'scene_video';
     case NarrationTts = 'narration_tts';
     case DialogueTts = 'dialogue_tts';
     case VoicePreview = 'voice_preview';
@@ -30,6 +31,7 @@ enum ProviderOperation: string
         return match ($this) {
             self::Story, self::ScenePlanning, self::VideoMetadata, self::DialogueVoiceAssignment => ProviderCapability::Text,
             self::CharacterReference, self::SceneImage => ProviderCapability::Image,
+            self::SceneVideo => ProviderCapability::Video,
             self::NarrationTts, self::DialogueTts, self::VoicePreview => ProviderCapability::Tts,
             self::MusicGeneration => ProviderCapability::Music,
         };

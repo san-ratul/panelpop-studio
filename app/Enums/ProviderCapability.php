@@ -27,18 +27,15 @@ enum ProviderCapability: string
     }
 
     /**
-     * Capabilities a user can configure provider settings for. The video
-     * (image-to-video) capability is excluded until a provider implements
-     * App\AI\Contracts\VideoProvider — it must not appear as a configurable
-     * option while resolving it would always fail.
+     * Capabilities a user can configure provider settings for. All
+     * capabilities with a registered real provider are configurable — the
+     * video capability became configurable when the Runway Dev aggregation
+     * was verified and integrated (2026-10-31).
      *
      * @return list<self>
      */
     public static function configurable(): array
     {
-        return array_values(array_filter(
-            self::cases(),
-            static fn (self $capability): bool => $capability !== self::Video,
-        ));
+        return self::cases();
     }
 }

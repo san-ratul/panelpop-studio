@@ -6,6 +6,7 @@ use App\AI\Contracts\ImageProvider;
 use App\AI\Contracts\MusicProvider;
 use App\AI\Contracts\TextProvider;
 use App\AI\Contracts\TtsProvider;
+use App\AI\Contracts\VideoProvider;
 use App\AI\Cost\CostEstimator;
 use App\AI\Exceptions\ProviderConfigurationException;
 use App\Enums\ProviderCapability;
@@ -46,6 +47,11 @@ final class ResolvedProvider
     public function musicAdapter(): MusicProvider
     {
         return $this->adapterAs(MusicProvider::class);
+    }
+
+    public function videoAdapter(): VideoProvider
+    {
+        return $this->adapterAs(VideoProvider::class);
     }
 
     private function adapterAs(string $contract): object

@@ -12,6 +12,7 @@ final class FakeCostEstimator implements CostEstimator
         'image' => 0.02,
         'tts' => 0.005,
         'music' => 0.01,
+        'video' => 0.5,
     ];
 
     public function estimate(ProviderCapability $capability, string $provider, ?string $model, mixed $input = null): ?float

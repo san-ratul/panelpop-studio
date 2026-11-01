@@ -6,6 +6,7 @@ enum AssetType: string
 {
     case CharacterReference = 'character_reference';
     case SceneImage = 'scene_image';
+    case SceneClip = 'scene_clip';
     case VoiceAudio = 'voice_audio';
     case Music = 'music';
     case Sfx = 'sfx';

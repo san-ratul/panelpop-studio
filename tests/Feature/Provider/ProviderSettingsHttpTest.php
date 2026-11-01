@@ -128,9 +128,12 @@ class ProviderSettingsHttpTest extends TestCase
     public function test_store_rejects_an_invalid_capability(): void
     {
         $response = $this->actingAs($this->user)->post(route('provider-settings.store'), [
-            'capability' => 'video',
+            // 'video' became a REAL configurable capability when the Runway
+            // aggregation was verified and integrated (2026-10-31); an
+            // unregistered capability value must still be rejected.
+            'capability' => 'telepathy',
             'provider' => 'fake',
-            'label' => 'Fake video',
+            'label' => 'Fake telepathy',
             'is_default' => false,
             'is_active' => true,
         ]);

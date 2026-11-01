@@ -136,4 +136,44 @@ class Video extends Model
 
         return $videoSetting ?? $projectSetting ?? (bool) config('ffmpeg.animation.enabled', true);
     }
+
+    /**
+     * Generation mode in force: 'animated' renders AI image-to-video clips
+     * per scene (falls back per scene to the still pipeline when a clip is
+     * missing); 'still' uses only generated images. Resolution: video
+     * setting → project setting → 'still' (the cheap default — AI video is
+     * 10–20× the image cost and must never be switched on silently).
+     */
+    public function effectiveGenerationMode(): string
+    {
+        $videoSetting = $this->settings['generation_mode'] ?? null;
+        $projectSetting = $this->project->settings['generation_mode'] ?? null;
+        $mode = $videoSetting ?? $projectSetting;
+
+        return $mode === 'animated' ? 'animated' : 'still';
+    }
+
+    /**
+     * AI video model in force (must exist in the verified Runway catalog,
+     * config ai.runway.models). Video setting → project setting → env/config
+     * default.
+     */
+    public function effectiveVideoModel(): string
+    {
+        $candidates = [
+            $this->settings['video_model'] ?? null,
+            $this->project->settings['video_model'] ?? null,
+            config('ai.runway.default_model'),
+        ];
+
+        $models = config('ai.runway.models', []);
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && isset($models[$candidate])) {
+                return $candidate;
+            }
+        }
+
+        return 'veo3.1_fast';
+    }
 }

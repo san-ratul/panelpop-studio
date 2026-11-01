@@ -4,14 +4,21 @@ namespace App\AI\Support;
 
 /**
  * UI catalog for the documented OpenAI createSpeech built-in voices
- * (verified 2026-10-28) and speech style presets. The configured voice id
- * list in config/ai.php stays the source of truth for which ids are
- * offered; this catalog only adds presentation metadata (gender groups and
- * human-readable labels) plus instruction presets for speech styles.
+ * (verified 2026-10-28; re-audited 2026-10-31) and speech style presets.
+ * The configured voice id list in config/ai.php stays the source of truth
+ * for which ids are offered; this catalog only adds presentation metadata
+ * (gender groups and human-readable labels) plus instruction presets for
+ * speech styles.
  *
- * The documented built-in voices include no child voice, so a kids voice is
- * a built-in voice combined with a child-like instruction preset — the
- * style preset select offers those as "Kids voice" entries.
+ * CHILD-VOICE HONESTY (re-audited 2026-10-31 against the official Speech
+ * API docs and voice catalog): OpenAI ships NO child voice. Every built-in
+ * voice is an adult speaker. An instruction preset can bias delivery toward
+ * a youthful, childlike performance (pitch, energy, pronunciation), but it
+ * does NOT change the underlying voice. The presets are therefore labeled
+ * "Youthful (adult voice)" — never "Kids voice" — so users can make an
+ * informed choice, and the limitation is documented in
+ * .docs/VOICE_WORKFLOW.md. A genuinely childlike voice requires a provider
+ * with real child voice options (none is currently configured).
  */
 final class VoiceCatalog
 {
@@ -46,8 +53,8 @@ final class VoiceCatalog
      */
     private const STYLE_PRESETS = [
         'natural' => ['label' => 'Natural (no special style)', 'instructions' => ''],
-        'kid_girl' => ['label' => 'Kids voice — young girl (child-like)', 'instructions' => 'Voice of a young girl of about six to eight years old: bright, playful and high-pitched, with child-like pronunciation and boundless kid energy.'],
-        'kid_boy' => ['label' => 'Kids voice — young boy (child-like)', 'instructions' => 'Voice of a young boy of about six to eight years old: cheerful, energetic and slightly raspy, with child-like pronunciation and kid excitement.'],
+        'youthful_girl' => ['label' => 'Youthful girl — childlike delivery (adult voice)', 'instructions' => 'Perform as a young girl of about six to eight years old: raise the pitch to the top of your natural range, keep the delivery bright, bouncy and eager, use childlike diction with slightly rounded vowels, shorten sentences with playful breaths, and let every line bubble with kid excitement. Stay easy to understand.'],
+        'youthful_boy' => ['label' => 'Youthful boy — childlike delivery (adult voice)', 'instructions' => 'Perform as a young boy of about six to eight years old: lift the pitch to the upper end of your range, speak with bursts of energy and quick enthusiasm, use childlike diction and slightly slurred word endings, add playful gasps and small eager pauses, and keep a bright, mischievous tone. Stay clear and easy to understand.'],
         'singing' => ['label' => 'Singing / melodic', 'instructions' => 'Sing the words melodically in a simple nursery-rhyme style, with a steady rhythm, clear enunciation and musical intonation.'],
         'happy' => ['label' => 'Happy / cheerful', 'instructions' => 'Speak in a very happy, upbeat, cheerful tone with bright energy and a light smile in the voice.'],
         'sad' => ['label' => 'Sad / melancholic', 'instructions' => 'Speak in a sad, gentle, melancholic tone with soft, slow delivery and a hint of sorrow.'],

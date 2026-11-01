@@ -55,7 +55,7 @@ class VoiceCatalogTest extends TestCase
         $presets = VoiceCatalog::stylePresets();
         $values = array_column($presets, 'value');
 
-        foreach (['natural', 'kid_girl', 'kid_boy', 'singing', 'happy', 'sad'] as $expected) {
+        foreach (['natural', 'youthful_girl', 'youthful_boy', 'singing', 'happy', 'sad'] as $expected) {
             $this->assertContains($expected, $values);
         }
 
@@ -68,7 +68,7 @@ class VoiceCatalogTest extends TestCase
 
         $this->assertSame('', $natural['instructions']);
 
-        foreach (['kid_girl', 'kid_boy', 'singing', 'happy', 'sad'] as $styled) {
+        foreach (['youthful_girl', 'youthful_boy', 'singing', 'happy', 'sad'] as $styled) {
             $preset = $presets[array_search($styled, $values, true)];
 
             $this->assertNotSame('', $preset['instructions']);

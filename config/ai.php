@@ -5,10 +5,13 @@ use App\AI\Fakes\FakeImageProvider;
 use App\AI\Fakes\FakeMusicProvider;
 use App\AI\Fakes\FakeTextProvider;
 use App\AI\Fakes\FakeTtsProvider;
+use App\AI\Fakes\FakeVideoProvider;
 use App\AI\Providers\OpenAI\OpenAICostEstimator;
 use App\AI\Providers\OpenAI\OpenAIImageProvider;
 use App\AI\Providers\OpenAI\OpenAITextProvider;
 use App\AI\Providers\OpenAI\OpenAITtsProvider;
+use App\AI\Providers\Runway\RunwayCostEstimator;
+use App\AI\Providers\Runway\RunwayVideoProvider;
 
 $budgetCeiling = env('DAILY_PROVIDER_BUDGET_USD');
 
@@ -46,6 +49,7 @@ return [
         'image' => (int) env('PROVIDER_TIMEOUT_IMAGE_SECONDS', 300),
         'tts' => (int) env('PROVIDER_TIMEOUT_TTS_SECONDS', 300),
         'music' => (int) env('PROVIDER_TIMEOUT_MUSIC_SECONDS', 300),
+        'video' => (int) env('PROVIDER_TIMEOUT_VIDEO_SECONDS', 900),
     ],
 
     'env' => [
@@ -70,6 +74,11 @@ return [
             'model' => env('MUSIC_MODEL'),
             'api_key' => env('MUSIC_API_KEY'),
         ],
+        'video' => [
+            'provider' => env('VIDEO_PROVIDER'),
+            'model' => env('VIDEO_MODEL'),
+            'api_key' => env('VIDEO_API_KEY'),
+        ],
     ],
 
     'providers' => [
@@ -82,21 +91,38 @@ return [
                 'tts' => OpenAITtsProvider::class,
             ],
         ],
+        'runway' => [
+            // Runway Dev aggregation API (VERIFIED 2026-10-31 against
+            // docs.dev.runwayml.com): one image-to-video endpoint across
+            // many models (Veo 3.1 with native audio+speech, Kling 3.0/4.0,
+            // WAN 3.0, Gen-4 Turbo/4.5, Seedance), async task polling,
+            // 9:16 portrait, image conditioning via start-frame data URI,
+            // transparent per-second USD pricing. See .docs/
+            // VIDEO_GENERATION_AI.md. NOTE: OpenAI's Sora 2 API was shut
+            // down 2026-09-24 and is NOT a usable provider.
+            'label' => 'Runway Dev',
+            'capabilities' => ['video'],
+            'adapters' => [
+                'video' => RunwayVideoProvider::class,
+            ],
+        ],
         'fake' => [
             'label' => 'Deterministic fake (testing only)',
             'test_only' => true,
-            'capabilities' => ['text', 'image', 'tts', 'music'],
+            'capabilities' => ['text', 'image', 'tts', 'music', 'video'],
             'adapters' => [
                 'text' => FakeTextProvider::class,
                 'image' => FakeImageProvider::class,
                 'tts' => FakeTtsProvider::class,
                 'music' => FakeMusicProvider::class,
+                'video' => FakeVideoProvider::class,
             ],
         ],
     ],
 
     'estimators' => [
         'openai' => OpenAICostEstimator::class,
+        'runway' => RunwayCostEstimator::class,
         'fake' => FakeCostEstimator::class,
     ],
 
@@ -248,4 +274,83 @@ return [
         ],
     ],
 
+    // Runway Dev aggregation API for AI scene video (image-to-video).
+    // VERIFIED 2026-10-31 against docs.dev.runwayml.com:
+    // - POST {base}/image_to_video  JSON {model, promptText, promptImage,
+    //   ratio, duration, audio?, seed?}  → {id, status}
+    // - GET  {base}/tasks/{id}      → {status, progress?, output:[url]}
+    // - promptImage accepts an https URL or a base64 data URI
+    // - Auth: Authorization: Bearer <key>, X-Runway-Version: 2024-11-06
+    // - Credits cost $0.01 each; the table below lists VERIFIED per-second
+    //   credit rates from the official pricing page (USD = credits / 100).
+    'runway' => [
+        'base_url' => env('RUNWAY_BASE_URL', 'https://api.dev.runwayml.com/v1'),
+        'api_version' => '2024-11-06',
+        'pricing_source_url' => 'https://docs.dev.runwayml.com/guides/pricing/',
+        'pricing_verified_at' => '2026-10-31',
+
+        // Which ratios the render pipeline requests (9:16 vertical target).
+        'ratio_portrait' => '720:1280',
+
+        // VERIFIED model catalog for AI scene animation. rates_credits_per_
+        // second are from the official pricing page (see source_url);
+        // audio = model renders native audio (speech/dialogue possible);
+        // durations = supported clip lengths (seconds); lip_sync documents
+        // what the model ACTUALLY does with quoted dialogue in the prompt —
+        // 'prompt_dialogue' means native speech generation renders the line,
+        // which must be verified in staging before being advertised.
+        'models' => [
+            'veo3.1_fast' => [
+                'label' => 'Veo 3.1 Fast — native audio + speech',
+                'audio' => true,
+                'lip_sync' => 'prompt_dialogue',
+                'durations' => [4, 6, 8],
+                'rates_credits_per_second' => 15.0, // audio on
+                'notes' => 'With audio. Google model via Runway; speech quality must be validated in staging.',
+            ],
+            'kling3.0_standard' => [
+                'label' => 'Kling 3.0 Standard — optional audio',
+                'audio' => true,
+                'lip_sync' => 'prompt_dialogue',
+                'durations' => [5, 10],
+                'rates_credits_per_second' => 13.0, // audio on
+                'notes' => '720p, 3–15 s. Verify speech quality in staging.',
+            ],
+            'wan3' => [
+                'label' => 'WAN 3.0 (720p) — native audio',
+                'audio' => true,
+                'lip_sync' => 'prompt_dialogue',
+                'durations' => [5, 10],
+                'rates_credits_per_second' => 10.0, // 720p
+                'notes' => 'Native audio, 2–30 s.',
+            ],
+            'gen4_turbo' => [
+                'label' => 'Gen-4 Turbo — silent (lowest cost)',
+                'audio' => false,
+                'lip_sync' => 'none',
+                'durations' => [5, 10],
+                'rates_credits_per_second' => 5.0,
+                'notes' => 'Silent clip; dialogue stays on the TTS overlay.',
+            ],
+            'gen4.5' => [
+                'label' => 'Gen-4.5 — silent, high quality',
+                'audio' => false,
+                'lip_sync' => 'none',
+                'durations' => [5, 10],
+                'rates_credits_per_second' => 12.0,
+                'notes' => 'Silent clip; dialogue stays on the TTS overlay.',
+            ],
+        ],
+
+        // Default model when neither video settings nor env specify one.
+        'default_model' => env('VIDEO_MODEL', 'veo3.1_fast'),
+
+        // Poll cadence + ceiling for the queue job's internal status loop.
+        'poll_interval_seconds' => (int) env('VIDEO_POLL_INTERVAL_SECONDS', 10),
+        'poll_timeout_seconds' => (int) env('VIDEO_POLL_TIMEOUT_SECONDS', 600),
+
+        // Maximum scene duration a single clip must cover (longer scenes
+        // hold the clip's last frame via FFmpeg).
+        'max_scene_seconds' => 20,
+    ],
 ];

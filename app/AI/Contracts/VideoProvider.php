@@ -6,30 +6,53 @@ use App\AI\Inputs\SceneAnimationBrief;
 use App\AI\Results\AnimatedScene;
 
 /**
- * Image-to-video contract for character/scene animation (VIDEO_ANIMATION.md).
+ * Image-to-video contract (VIDEO_GENERATION_AI.md).
  *
- * NO PROVIDER IMPLEMENTS THIS YET. It exists so a future provider (e.g. an
- * image-to-video AI service) can be plugged into the existing provider
- * registry, credential store, ledger and retry pipeline without touching the
- * render pipeline or the application domain:
+ * Two-phase async design (matches how every major video API works — tasks
+ * are queued server-side and polled):
  *
- * - register an adapter in config/ai.php under the provider's `video` key;
- * - the adapter implements this contract (plus ConfigurableProvider);
- * - ProviderManager::resolve(ProviderCapability::Video, ...) then works and
- *   the gateway records calls with cost attribution like any other
- *   capability.
+ *  1. createSceneTask() submits the generation and returns a task handle.
+ *  2. pollSceneTask() reports progress until the clip is ready or failed.
+ *  3. The caller downloads the clip bytes and persists them itself, so the
+ *     provider stays storage-agnostic.
  *
- * Render integration expectation: an implementing pipeline would replace a
- * scene's static-image segment with the provider's clip when the video's
- * animation settings enable it, with per-second provider cost tracked as
- * actual usage. Until such a provider exists, the render pipeline uses the
- * layered FFmpeg animation (FfmpegCommandBuilder::layeredMotionExpressions).
+ * Implemented by RunwayVideoProvider (Runway Dev aggregation — VERIFIED
+ * 2026-10-31: models incl. veo3.1/veo3.1_fast with native audio+speech,
+ * kling3.0 with optional audio, wan3 native audio, gen4_turbo/gen4.5
+ * silent; async tasks; 9:16; image conditioning via data-URI start frame;
+ * per-second USD pricing). The former OpenAI Sora 2 API was shut down
+ * 2026-09-24 and cannot be used.
  */
 interface VideoProvider
 {
     /**
-     * Animates one scene: a still key image plus optional character/motion
-     * guidance becomes a short vertical clip matching the scene duration.
+     * Submits one scene-animation task and returns its remote handle
+     * immediately (the provider queues the render).
+     */
+    public function createSceneTask(SceneAnimationBrief $brief): VideoTaskHandle;
+
+    /**
+     * Reports the current state of a previously submitted task.
+     */
+    public function pollSceneTask(VideoTaskHandle $handle): VideoTaskStatus;
+
+    /**
+     * Downloads the bytes of a completed task's output URL (MP4). The
+     * adapter validates the payload is a non-empty MP4 stream.
+     */
+    public function downloadContent(string $url): string;
+
+    /**
+     * Honest capability declaration for this provider/model — the
+     * application must never claim lip-sync, native audio or reference
+     * conditioning the provider does not actually offer.
+     */
+    public function capabilities(): VideoProviderCapabilities;
+
+    /**
+     * Animates one scene end-to-end (submit + poll to completion). A
+     * synchronous convenience used by tests and tooling; the queue pipeline
+     * uses the two-phase methods.
      */
     public function animateScene(SceneAnimationBrief $brief): AnimatedScene;
 }

@@ -262,6 +262,7 @@ final class OpenAIPayloadValidator
                 'image_prompt' => $imagePrompt,
                 'narration_text' => self::nullableStringField($entry, 'narration_text', self::MAX_NARRATION),
                 'narration_voice_instructions' => self::nullableStringField($entry, 'narration_voice_instructions', 4096),
+                'motion' => self::motionField($entry),
                 'dialogue' => $dialogue,
             ];
         }
@@ -318,6 +319,26 @@ final class OpenAIPayloadValidator
         }
 
         return $assignments;
+    }
+
+    /**
+     * Validates the optional scene motion plan object.
+     *
+     * @return array{action: ?string, camera: ?string, environment: ?string}|null
+     */
+    private static function motionField(array $entry): ?array
+    {
+        $motion = $entry['motion'] ?? null;
+
+        if (! is_array($motion)) {
+            return null;
+        }
+
+        return [
+            'action' => self::nullableStringField($motion, 'action', 2000),
+            'camera' => self::nullableStringField($motion, 'camera', 500),
+            'environment' => self::nullableStringField($motion, 'environment', 1000),
+        ];
     }
 
     /**
