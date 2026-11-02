@@ -26,3 +26,15 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Generated caches and local artifacts
+/bootstrap/cache/*.php
+/storage/app/media/
+/storage/app/rendering/
+/storage/app/testing/
+/storage/app/fixture-build/
+/storage/app/segment-test.mp4
+/storage/framework/views/
+/storage/inertia-devtools/
+/queue.log
+
