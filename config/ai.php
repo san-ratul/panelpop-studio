@@ -6,6 +6,8 @@ use App\AI\Fakes\FakeMusicProvider;
 use App\AI\Fakes\FakeTextProvider;
 use App\AI\Fakes\FakeTtsProvider;
 use App\AI\Fakes\FakeVideoProvider;
+use App\AI\Providers\ElevenLabs\ElevenLabsCostEstimator;
+use App\AI\Providers\ElevenLabs\ElevenLabsTtsProvider;
 use App\AI\Providers\OpenAI\OpenAICostEstimator;
 use App\AI\Providers\OpenAI\OpenAIImageProvider;
 use App\AI\Providers\OpenAI\OpenAITextProvider;
@@ -135,6 +137,34 @@ return [
                 'tts' => ReplicateTtsProvider::class,
             ],
         ],
+        'elevenlabs' => [
+            // ElevenLabs text-to-speech (VERIFIED 2026-11-02 against
+            // elevenlabs.io official docs — /docs/capabilities/text-to-speech
+            // and the Create Speech API reference):
+            // - POST {base}/v1/text-to-speech/{voice_id} (JSON body, auth
+            //   header `xi-api-key`) → binary audio file response.
+            // - Query `output_format` picks the container/rate/bitrate
+            //   (mp3_44100_128 default; mp3 192k needs Creator tier, 44.1kHz
+            //   PCM/WAV needs Pro tier — stay on the no-tier default).
+            // - Body: text (required), model_id (default eleven_multilingual_
+            //   v2), voice_settings {stability, similarity_boost, style,
+            //   speed, use_speaker_boost}, language_code (ignored by
+            //   multilingual v2), seed, previous_text/next_text.
+            // - Models (documented char limits): eleven_multilingual_v2
+            //   10,000; eleven_flash_v2_5 40,000. Other model ids work via
+            //   settings but are not pre-verified.
+            // - Billing is PER CHARACTER (credits; per-model multipliers;
+            //   Flash ≈ 50% lower per character). Exact USD/character is
+            //   tier-dependent → NO price is hardcoded here: administrators
+            //   configure model_pricing (unit per_character) before paid
+            //   generation is allowed. Voice library API is NOT available
+            //   on free tier accounts.
+            'label' => 'ElevenLabs',
+            'capabilities' => ['tts'],
+            'adapters' => [
+                'tts' => ElevenLabsTtsProvider::class,
+            ],
+        ],
         'fake' => [
             'label' => 'Deterministic fake (testing only)',
             'test_only' => true,
@@ -153,6 +183,7 @@ return [
         'openai' => OpenAICostEstimator::class,
         'runway' => RunwayCostEstimator::class,
         'replicate' => ReplicateCostEstimator::class,
+        'elevenlabs' => ElevenLabsCostEstimator::class,
         'fake' => FakeCostEstimator::class,
     ],
 
@@ -384,6 +415,43 @@ return [
         'max_scene_seconds' => 20,
     ],
 
+    // ElevenLabs — primary voice-quality TTS provider (verified 2026-11-02;
+    // see the 'elevenlabs' provider block above for source URLs and rules).
+    'elevenlabs' => [
+        'base_url' => env('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io'),
+
+        'pricing_verified_at' => '2026-11-02',
+
+        // Documented TTS models with their character limits (Create Speech
+        // reference + models overview). Unknown model ids still work when
+        // configured via settings; they fall back to the conservative
+        // multilingual-v2 limit.
+        'models' => [
+            'eleven_multilingual_v2' => [
+                'label' => 'Multilingual v2 — most stable, 29 languages',
+                'max_input_chars' => 10000,
+            ],
+            'eleven_flash_v2_5' => [
+                'label' => 'Flash v2.5 — lowest latency, 32 languages',
+                'max_input_chars' => 40000,
+            ],
+        ],
+
+        'default_model' => env('ELEVENLABS_TTS_MODEL', 'eleven_multilingual_v2'),
+
+        // Documented fallback voice from the official API example ("George").
+        // Real selections come from the synced voice library.
+        'default_voice' => env('ELEVENLABS_TTS_DEFAULT_VOICE', 'JBFqnCBsd6RMkjVDRZzb'),
+
+        // Documented output_format enum value. mp3_44100_128 is the API
+        // default and carries no subscription-tier requirement (192k mp3
+        // needs Creator; 44.1kHz pcm/wav needs Pro).
+        'output_format' => env('ELEVENLABS_TTS_OUTPUT_FORMAT', 'mp3_44100_128'),
+
+        // Voice-library sync: cached DB table refreshed on demand.
+        'voice_cache_minutes' => (int) env('ELEVENLABS_VOICE_CACHE_MINUTES', 60),
+    ],
+
     // Replicate hosted predictions — PRIMARY scene-video + voice provider.
     // VERIFIED 2026-11-01 against replicate.com official model pages (each
     // model's embedded input schema and billing config) and the official
@@ -524,6 +592,14 @@ return [
 
             // Verified billing figure (USD per 1,000 input tokens).
             'price_per_1k_tokens' => 0.06,
+
+            // Per-model verified rates, USD per 1,000 input tokens (the
+            // pricing engine keys estimates off the model id, not the
+            // configured default; pre-call estimates keep using the flat
+            // price_per_1k_tokens above for the configured model).
+            'pricing_per_1k_tokens' => [
+                'minimax/speech-02-turbo' => 0.06,
+            ],
 
             // Documented text limit (verified schema: max 10,000 chars).
             'max_input_chars' => 10000,

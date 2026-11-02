@@ -23,13 +23,17 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    toolPreset: {
+        type: Object,
+        default: null,
+    },
 });
 
 const form = useForm({
     title: '',
-    presentation_mode: 'narrator',
+    presentation_mode: props.toolPreset?.presentation_mode || 'narrator',
     target_duration_seconds: 60,
-    visual_style: 'simple_2d_cartoon',
+    visual_style: props.toolPreset?.visual_style || 'simple_2d_cartoon',
     language: 'en',
 });
 
@@ -40,6 +44,11 @@ function submit() {
 
 <template>
     <AppLayout :auth-user="authUser">
+        <div v-if="toolPreset" class="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-800">
+            <span class="font-semibold">Tool preset: {{ toolPreset.label }}</span>
+            — style and presentation mode are prefilled; adjust freely.
+        </div>
+
         <h1 class="text-2xl font-semibold text-gray-900">New project</h1>
 
         <form

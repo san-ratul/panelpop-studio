@@ -37,7 +37,10 @@ const currentUser = computed(() => props.authUser ?? page.props.auth?.user ?? nu
 const isAdmin = computed(() => Boolean(currentUser.value?.is_admin));
 
 const productLinks = computed(() => {
-    const links = [{ label: 'Dashboard', href: route('dashboard'), icon: 'dashboard', components: ['Dashboard'] }];
+    const links = [
+        { label: 'Dashboard', href: route('dashboard'), icon: 'dashboard', components: ['Dashboard'] },
+        { label: 'Tools', href: route('tools.index'), icon: 'story', components: ['Tools/Index'] },
+    ];
 
     if (props.project) {
         links.push(
@@ -69,6 +72,7 @@ const productLinks = computed(() => {
 });
 
 const settingsLinks = computed(() => [
+    { label: 'Voice library', href: route('voices.index'), icon: 'audio', components: ['Voices/Index'] },
     { label: 'AI providers', href: route('provider-settings.index'), icon: 'providers', components: ['Settings/Providers'] },
     { label: 'Account', href: route('password.edit'), icon: 'account', components: ['Settings/Password'] },
 ]);
@@ -77,6 +81,8 @@ const settingsLinks = computed(() => [
 // links are merely discoverability for authorized administrators.
 const adminLinks = computed(() => (isAdmin.value ? [
     { label: 'Overview', href: route('admin.dashboard'), icon: 'overview', components: ['Admin/Dashboard'] },
+    { label: 'Model pricing', href: route('admin.models.index'), icon: 'simulation', components: ['Admin/ModelPricing'] },
+    { label: 'Users & credits', href: route('admin.users.index'), icon: 'account', components: ['Admin/Users', 'Admin/UserCredits'] },
     { label: 'Cost analytics', href: route('admin.costs.index'), icon: 'costs', components: ['Admin/Costs'] },
     { label: 'Detailed cost reports', href: route('admin.costs.calls'), icon: 'reports', components: ['Admin/CostCalls'] },
     { label: 'Pricing simulation', href: route('admin.pricing.simulation'), icon: 'simulation', components: ['Admin/PricingSimulation'] },

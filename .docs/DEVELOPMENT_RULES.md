@@ -33,10 +33,10 @@
 18. **Report changed files, commands executed, test results (passed/failed), and outstanding work** at the end of each task.
 19. **Update documentation whenever implementation changes agreed architecture or behavior** — at minimum [PROGRESS.md](PROGRESS.md); plus phase doc, [DECISIONS.md](DECISIONS.md), [CHANGELOG.md](CHANGELOG.md) as applicable. Never mark work complete merely because it is documented; completion requires recorded verification evidence.
 
-## Scope locks (MVP)
+## Scope locks (MVP — superseded 2026-11-02 by the user's master prompt, see docs/AITUBER_IMPLEMENTATION_PROGRESS.md D-A04)
 
-20. **Do not implement automated social publishing** (YouTube/Facebook/TikTok APIs) in the MVP.
-21. **Do not implement SaaS subscription billing**, payments, or public registration in the MVP.
+20. ~~Do not implement automated social publishing~~ **Superseded:** publishing via OFFICIAL platform APIs + OAuth is now in scope; never simulate successful publishing, and document external setup (client credentials) at the credential boundary.
+21. ~~Do not implement SaaS subscription billing~~ **Superseded:** the user credit system (ledger + reservations + pricing engine) and admin credit management are implemented; payment-gateway purchases and subscription plans remain at the external-credential boundary. Never store third-party access tokens insecurely; never use float arithmetic for money.
 
 ## Security rules
 

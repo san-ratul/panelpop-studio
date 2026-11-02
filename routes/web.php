@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\AdminDashboardController;
+use App\Http\Controllers\AdminModelPricingController;
+use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CharacterController;
 use App\Http\Controllers\CostAnalyticsController;
 use App\Http\Controllers\CostCallReportController;
+use App\Http\Controllers\CostEstimateController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PasswordController;
 use App\Http\Controllers\PricingSimulationController;
@@ -17,7 +20,9 @@ use App\Http\Controllers\SceneController;
 use App\Http\Controllers\SceneDialogueLineController;
 use App\Http\Controllers\StoryboardController;
 use App\Http\Controllers\StoryController;
+use App\Http\Controllers\ToolLibraryController;
 use App\Http\Controllers\VideoController;
+use App\Http\Controllers\VoiceLibraryController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('dashboard'));
@@ -35,6 +40,12 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware('auth')
     ->name('dashboard');
 
+// Tool library (AITUBER mission §6B): searchable generation-tool presets
+// over the shared pipeline.
+Route::get('/tools', [ToolLibraryController::class, 'index'])
+    ->middleware('auth')
+    ->name('tools.index');
+
 // Internal admin area — admins only (D-030): aggregate accounting data and
 // operational reports must never be reachable by ordinary users. The admin
 // sidebar entries merely aid discoverability; this gate is the boundary.
@@ -43,9 +54,29 @@ Route::middleware(['auth', 'can:admin'])->prefix('admin')->name('admin.')->group
     Route::get('/costs', [CostAnalyticsController::class, 'index'])->name('costs.index');
     Route::get('/costs/calls', [CostCallReportController::class, 'index'])->name('costs.calls');
     Route::get('/pricing-simulation', [PricingSimulationController::class, 'index'])->name('pricing.simulation');
+    Route::get('/models', [AdminModelPricingController::class, 'index'])->name('models.index');
+    Route::post('/models', [AdminModelPricingController::class, 'store'])->name('models.store');
+    Route::patch('/models/{modelPricing}', [AdminModelPricingController::class, 'update'])->name('models.update');
+    Route::delete('/models/{modelPricing}', [AdminModelPricingController::class, 'destroy'])->name('models.destroy');
+    Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [AdminUserController::class, 'show'])->name('users.show');
+    Route::post('/users/{user}/credits', [AdminUserController::class, 'adjust'])->name('users.credits');
 });
 
 Route::middleware('auth')->group(function () {
+    // Estimate-before-generate (AITUBER mission §8): the backend is the
+    // single authority for credit pricing — the frontend re-asks whenever
+    // generation parameters change and never computes prices itself.
+    Route::post('/generation/estimate', [CostEstimateController::class, 'store'])->name('generation.estimate');
+
+    // Voice library (AITUBER mission §10): provider-synced ElevenLabs
+    // catalog with search/filter/preview.
+    Route::get('/voices', [VoiceLibraryController::class, 'index'])->name('voices.index');
+    Route::post('/voices/sync', [VoiceLibraryController::class, 'sync'])->name('voices.sync');
+    Route::get('/voices/{voice}/preview', [VoiceLibraryController::class, 'preview'])
+        ->withoutScopedBindings()
+        ->name('voices.preview');
+
     Route::get('/settings/providers', [ProviderSettingsController::class, 'index'])->name('provider-settings.index');
     Route::post('/settings/providers', [ProviderSettingsController::class, 'store'])->name('provider-settings.store');
     Route::patch('/settings/providers/{providerSetting}', [ProviderSettingsController::class, 'update'])->name('provider-settings.update');

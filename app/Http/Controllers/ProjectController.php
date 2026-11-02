@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\AI\Support\ToolRegistry;
 use App\Enums\PresentationMode;
 use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
@@ -49,12 +50,22 @@ class ProjectController extends Controller
         return $catalog->values()->all();
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $toolSlug = $request->query('tool');
+        $tool = is_string($toolSlug) && $toolSlug !== '' ? ToolRegistry::find($toolSlug) : null;
+
         return Inertia::render('Projects/Create', [
             'presentationModes' => self::presentationModes(),
             'visualStyles' => self::styleOptions(),
             'languages' => self::languageOptions(),
+            'toolPreset' => $tool === null ? null : [
+                'slug' => $toolSlug,
+                'label' => (string) ($tool['label'] ?? $toolSlug),
+                'visual_style' => (string) ($tool['visual_style'] ?? ''),
+                'presentation_mode' => (string) ($tool['presentation_mode'] ?? ''),
+                'brief_scaffold' => (string) ($tool['brief_scaffold'] ?? ''),
+            ],
         ]);
     }
 

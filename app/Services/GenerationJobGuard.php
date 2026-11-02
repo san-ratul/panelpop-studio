@@ -15,6 +15,7 @@ use App\Jobs\RenderVideoJob;
 use App\Models\GenerationJob;
 use App\Models\Project;
 use App\Models\Video;
+use App\Services\Credits\GenerationBilling;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -142,11 +143,12 @@ final class GenerationJobGuard
     }
 
     /**
-     * Creates the ledger job row (queued) and dispatches the queue job after
-     * the row is committed. With the sync queue driver the job runs inline;
-     * provider failures are then already persisted on the row and swallowed
-     * here so the HTTP layer can redirect to the recorded failure instead of
-     * an HTTP 500.
+     * Creates the ledger job row (queued), reserves the estimated credits
+     * for billable stages (when the credit system is enabled), and
+     * dispatches the queue job after the row is committed. With the sync
+     * queue driver the job runs inline; provider failures are then already
+     * persisted on the row and swallowed here so the HTTP layer can
+     * redirect to the recorded failure instead of an HTTP 500.
      *
      * @param  array<string, mixed>  $payload  Inputs snapshot (no secrets).
      */
@@ -168,6 +170,11 @@ final class GenerationJobGuard
 
             return $project->generationJobs()->create($attributes);
         });
+
+        // Reserve credits AFTER the job row exists (the reservation
+        // references it) and BEFORE dispatch — an insufficient balance or
+        // an unpriced model refuses the launch before any provider work.
+        app(GenerationBilling::class)->reserveForLaunch($project, $type, $payload, $job, $video);
 
         try {
             dispatch($this->queueJobFor($type, $project, $job, $payload));

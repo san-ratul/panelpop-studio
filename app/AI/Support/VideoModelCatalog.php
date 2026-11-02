@@ -123,10 +123,28 @@ final class VideoModelCatalog
     }
 
     /**
+     * The model's longest supported clip length in seconds (conservative
+     * launch-estimate bound), or null when the catalog does not list
+     * durations for the model.
+     */
+    public static function maxDurationFor(?string $model): ?int
+    {
+        $meta = self::catalog()[$model ?? ''] ?? null;
+        $durations = $meta['durations'] ?? null;
+
+        if (! is_array($durations) || $durations === []) {
+            return null;
+        }
+
+        return max(array_map('intval', $durations));
+    }
+
+    /**
      * Merged, normalized catalog across configured providers:
-     * label, audio capability, and the default-resolution USD/s rate.
+     * label, audio capability, supported durations, and the
+     * default-resolution USD/s rate.
      *
-     * @return array<string, array{label?: string, audio?: bool, usd_per_second?: float, provider: string}>
+     * @return array<string, array{label?: string, audio?: bool, durations?: list<int>, usd_per_second?: float, provider: string}>
      */
     public static function catalog(): array
     {
@@ -145,6 +163,7 @@ final class VideoModelCatalog
                 'provider' => 'runway',
                 'label' => is_string($meta['label'] ?? null) ? $meta['label'] : null,
                 'audio' => ($meta['audio'] ?? false) === true,
+                'durations' => self::durations($meta),
                 'usd_per_second' => $creditsPerSecond !== null ? $creditsPerSecond / 100.0 : null,
             ];
         }
@@ -158,6 +177,7 @@ final class VideoModelCatalog
                 'provider' => 'replicate',
                 'label' => is_string($meta['label'] ?? null) ? $meta['label'] : null,
                 'audio' => ($meta['audio'] ?? false) === true,
+                'durations' => self::durations($meta),
                 'usd_per_second' => is_numeric($meta['default_usd_per_second'] ?? null)
                     ? (float) $meta['default_usd_per_second']
                     : null,
@@ -165,5 +185,20 @@ final class VideoModelCatalog
         }
 
         return $merged;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     * @return list<int>|null
+     */
+    private static function durations(array $meta): ?array
+    {
+        $durations = $meta['durations'] ?? null;
+
+        if (! is_array($durations) || $durations === []) {
+            return null;
+        }
+
+        return array_values(array_map(intval(...), array_filter($durations, is_numeric(...))));
     }
 }

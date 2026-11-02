@@ -10,8 +10,10 @@ use App\AI\ProviderGateway;
 use App\AI\ProviderManager;
 use App\AI\ProviderRegistry;
 use App\AI\ProviderSettingsService;
+use App\Models\GenerationJob;
 use App\Models\User;
 use App\Models\Video;
+use App\Observers\GenerationJobObserver;
 use App\Services\ProjectStatusService;
 use App\Services\Render\ProcessRunner;
 use App\Services\Render\RenderSettings;
@@ -67,5 +69,9 @@ class AppServiceProvider extends ServiceProvider
         // states — keep it in sync whenever any video row changes.
         Video::saved(fn (Video $video) => app(ProjectStatusService::class)->syncForVideo($video));
         Video::deleted(fn (Video $video) => app(ProjectStatusService::class)->syncForVideo($video));
+
+        // Credit reconciliation (AITUBER mission §9): centralized terminal-
+        // state hook so billing can never be forgotten by a job type.
+        GenerationJob::observe(GenerationJobObserver::class);
     }
 }
